@@ -1,185 +1,101 @@
 [settings]
 lockfile = true
-env_shell_expand = true
 minimum_release_age = "3d"
 
 [tools]
-# https://nodejs.org/
 node = "26"
-# https://aubepkg.github.io/aube/
 aube = "2"
-hk = "1"
-"github:suzuki-shunsuke/nllint" = "1"
+git-cliff = "2"
+"packslip:github.com/YewFence/actions/josh" = { version = "26.8.28", minimum_release_age = "0d" }
 pinact = "4"
-typos = "1.48.0"
-betterleaks = "1"
 actionlint = "1"
 
-[vars]
-nllint_excludes = ""
-
-[env]
-PINACT_MIN_AGE = "3"
-PINACT_GITHUB_TOKEN = { value = "${MISE_GITHUB_TOKEN:-}", redact = true }
+[tasks."deps:install"]
+run = "aube install --frozen-lockfile"
 
 [tasks."deps:check"]
-description = "Check the Node dependency lockfile"
 run = "aube install --dry-run"
 
-[tasks."deps:fix"]
-description = "Regenerate the Node dependency lockfile"
-run = "aube install --lockfile-only"
-
-[tasks."deps:update"]
-description = "Update Node dependencies"
-run = "aube update"
-
-[tasks."deps:install"]
-description = "Install Node dependencies from the lockfile"
-run = "aube install --frozen-lockfile"
-
-[tasks."schema:generate"]
-description = "Regenerate config.schema.json from the RawConfig types"
-run = "aube exec ts-json-schema-generator --path src/piCues/types.ts --type RawConfig --out config.schema.json && printf '\\n' >> config.schema.json"
-
-[tasks.test]
-description = "Run Node tests"
-run = "aube exec vitest --run"
-
-[tasks."fmt:check"]
-description = "Check TypeScript formatting"
-run = "aube exec oxfmt --check ."
-
-[tasks."fmt:fix"]
-description = "Format TypeScript code"
-run = "aube exec oxfmt ."
+[tasks.typecheck]
+run = "aube -r run --if-present typecheck"
 
 [tasks.lint]
-description = "Lint and type-check TypeScript code"
-run = ["aube exec oxlint", "aube exec tsc --noEmit"]
+run = "aube exec oxlint"
 
-[tasks."lint:fix"]
-description = "Fix auto-correctable TypeScript lint issues"
-run = "aube exec oxlint --fix"
+[tasks."fmt:check"]
+run = "aube exec oxfmt --check ."
 
-[tasks.build]
-description = "Build the package for publishing"
-run = "aube exec tsdown src/piCues/index.ts"
+[tasks.test]
+run = ["aube -r run --if-present test", "node --test tests/*.test.mjs"]
 
-[tasks."build:check"]
-description = "Check that the TypeScript project type-checks"
-run = "aube exec tsc --noEmit"
-
-[tasks."leaks:check"]
-description = "Run betterleaks checks"
-run = '''
-if jj root >/dev/null 2>&1; then
-    jj diff --git 2>/dev/null | betterleaks stdin --redact --no-banner
-else
-    betterleaks git . --pre-commit --redact --no-banner
-fi
-'''
-
-[tasks."typos:check"]
-description = "Run Typos Lint"
-run = "typos"
-
-[tasks."typos:fix"]
-description = "Fix Typos Lint"
-run = "typos --write-changes"
-
-[tasks."newline:check"]
-description = "Check final newlines and surrounding whitespace in tracked text files"
-shell = "bash -c"
-run = '''
-set -o pipefail
-if jj root >/dev/null 2>&1; then
-    jj --ignore-working-copy file list -T 'path ++ "\0"' | xargs -0 nllint --trim-space
-else
-    git grep -Ilz '' -- . {{ vars.nllint_excludes }} | xargs -0 nllint --trim-space
-fi
-'''
-
-[tasks."newline:fix"]
-description = "Fix final newlines and surrounding whitespace in tracked text files"
-shell = "bash -c"
-run = '''
-set -o pipefail
-if jj root >/dev/null 2>&1; then
-    jj --ignore-working-copy file list -T 'path ++ "\0"' | xargs -0 nllint --fix --trim-space
-else
-    git grep -Ilz '' -- . {{ vars.nllint_excludes }} | xargs -0 nllint --fix --trim-space
-fi
-'''
+[tasks."package:check"]
+description = "Pack extensions and load their published entry points"
+usage = 'arg "[package]" default="all"'
+run = 'node scripts/check-packages.mjs "$usage_package"'
 
 [tasks.check]
-description = "Run read-only Node and repository checks"
 run = [
-  { tasks = [ "deps:check", "newline:check", "typos:check", "fmt:check", "build:check" ] },
-  { task = "leaks:check" },
-  { task = "actions:check" },
-  { task = "lint" },
-  { task = "test" }
+  { tasks = ["deps:check", "fmt:check", "typecheck", "lint", "actions:check"] },
+  { task = "test" },
+  { task = "package:check" },
+  { task = "docs:build" }
 ]
-alias = "c"
 
 [tasks.fix]
-description = "Fix Node dependencies and formatting"
-run = [
-  { task = "deps:fix" },
-  { task = "newline:fix" },
-  { task = "typos:fix" },
-  { task = "fmt:fix" },
-  { task = "lint:fix" }
-]
-alias = "f"
+run = ["aube install --lockfile-only", "aube exec oxfmt .", "aube exec oxlint --fix"]
 
-[tasks.'hooks:install']
-description = "Install Git hooks managed by hk"
-run = "hk install"
-# node and aube are declared by the base Node toolchain; the docs site needs no extra mise tools
-[tasks.'docs:install']
-description = "Install documentation site dependencies"
-dir = "docs"
-run = "aube install"
+[tasks."release:plan"]
+description = "Compute one package's version and release notes"
+usage = '''
+arg "<package>"
+flag "--ref <ref>" default="HEAD"
+flag "--output <output>" default="-"
+'''
+run = 'node scripts/release.mjs plan "$usage_package" "$usage_ref" "$usage_output"'
 
-[tasks.'docs:lock']
-description = "Generate the documentation lockfile without installing dependencies"
-dir = "docs"
-run = "aube install --lockfile-only"
+[tasks."release:prepare"]
+description = "Apply a release plan to package version, changelog, and lockfile"
+usage = 'arg "<plan>"'
+run = 'node scripts/release.mjs prepare "$usage_plan"'
 
-[tasks.'docs:install:locked']
-description = "Install documentation dependencies from the committed lockfile"
-dir = "docs"
-run = "aube install --frozen-lockfile"
+[tasks."release:validate"]
+description = "Validate the package tag and the prepared release base"
+usage = '''
+arg "<tag>"
+flag "--base <base>" default=""
+flag "--head <head>" default="HEAD"
+'''
+run = 'node scripts/release.mjs validate "$usage_tag" "$usage_base" "$usage_head"'
 
-[tasks.'docs:dev']
-description = "Start the VitePress documentation site"
-depends = ["docs:install:locked"]
+[tasks."release:notes"]
+usage = '''
+arg "<tag>"
+arg "<output>"
+'''
+run = 'node scripts/release.mjs notes "$usage_tag" "$usage_output"'
+
+[tasks."release:publish"]
+description = "Publish exactly the package and version identified by a tag"
+usage = '''
+arg "<tag>"
+flag "--dry-run"
+'''
+run = 'node scripts/release.mjs publish "$usage_tag" "$usage_dry_run"'
+
+[tasks."actions:check"]
+run = ["pinact run --fix=false --no-api", "actionlint .github/workflows/*.yml"]
+
+[tasks."actions:update"]
+run = "pinact run --update"
+
+[tasks."docs:dev"]
 dir = "docs"
 run = "aube exec vitepress dev"
 
-[tasks.'docs:build']
-description = "Build the VitePress documentation site"
-depends = ["docs:install:locked"]
+[tasks."docs:build"]
 dir = "docs"
 run = "aube exec vitepress build"
 
-[tasks.'docs:preview']
-description = "Preview the VitePress documentation site"
-depends = ["docs:install:locked"]
-dir = "docs"
-run = "aube exec vitepress preview"
-
-[tasks."actions:check"]
-description = "Run actionlint"
-depends = ["actions:pin-offline:check"]
-run = "actionlint .github/workflows/*.yml"
-
-[tasks.'actions:update']
-description = "Update GitHub Action versions and pin to commit hashes"
-run = "pinact run --update"
-
-[tasks.'actions:pin-offline:check']
-description = "Check GitHub Action versions and pin to commit hashes"
-run = "unset PINACT_MIN_AGE && pinact run --fix=false --no-api"
+[tasks."schema:generate"]
+dir = "packages/cues"
+run = "aube exec ts-json-schema-generator --path src/piCues/types.ts --type RawConfig --out config.schema.json"

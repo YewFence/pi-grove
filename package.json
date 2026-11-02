@@ -1,40 +1,15 @@
 {
-  "name": "pi-cues",
-  "version": "0.1.0",
-  "description": "Deterministic context loading for the pi coding agent: a central trigger table maps bash commands and tool-operated file paths to skills and prompt files",
-  "keywords": [
-    "pi-package"
-  ],
-  "bugs": {
-    "url": "https://github.com/YewFence/pi-cues/issues"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/YewFence/pi-cues.git"
-  },
-  "files": [
-    "dist",
-    "NOTICE",
-    "config.schema.json"
+  "name": "pi-grove",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "docs"
   ],
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    }
-  },
-  "scripts": {
-    "test": "vitest --run"
-  },
-  "dependencies": {
-    "picomatch": "^4.0.7",
-    "shell-quote": "^1.12.0",
-    "smol-toml": "^1.9.1"
-  },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
     "@types/node": "^26.6.5",
     "@types/picomatch": "^4.0.3",
     "@types/shell-quote": "^1.7.5",
@@ -42,19 +17,8 @@
     "oxfmt": "^0.72.0",
     "oxlint": "^1.88.0",
     "ts-json-schema-generator": "^2.9.0",
-    "tsdown": "^0.23.1",
+    "typebox": "1.4.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.4"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "pi": {
-    "extensions": [
-      "./src/piCues/index.ts"
-    ],
-    "skills": [
-      "./skills"
-    ]
   }
 }

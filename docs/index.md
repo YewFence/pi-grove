@@ -1,23 +1,14 @@
----
-layout: home
+# pi-grove
 
-hero:
-  name: "pi-cues"
-  text: "Deterministic context loading for the pi coding agent: a central trigger table maps bash commands and tool-operated file paths to skills and prompt files"
-  tagline: '[PLACEHOLDER] Add a concise project tagline.'
-  actions:
-    - theme: brand
-      text: Get Started
-      link: /guide/getting-started
-    - theme: alt
-      text: GitHub Repo
-      link: https://github.com/YewFence/pi-cues
+Personal collection of extensions for the [pi coding agent](https://pi.dev), written and maintained by YewFence.
 
-features:
-  - title: '[PLACEHOLDER] Primary feature'
-    details: '[PLACEHOLDER] Explain the main value of this project.'
-  - title: '[PLACEHOLDER] Secondary feature'
-    details: '[PLACEHOLDER] Explain another important capability.'
-  - title: Documentation
-    details: Find setup, usage, and configuration guidance in this documentation site.
----
+| Package | Purpose |
+| --- | --- |
+| `pi-cues` | Deterministic context injection, skills, and project conventions |
+| `@pi-grove/bash-jobs` | Background bash jobs, output polling, and job controls |
+| `@pi-grove/edit-diagnostics` | Useful diagnostics for failed exact edits |
+| `@pi-grove/ask-user-question` | Structured questionnaires with inline previews |
+
+Install individual packages with `pi install npm:<package-name>` after their first npm release. During local development, install `./packages/<slug>` from the repository checkout. The workspace root is private and does not load extensions.
+
+See [development and releases](./development.md) for the repository workflow. Historical pi-cues architecture decisions remain under [pi-cues ADRs](./pi-cues/adrs/index.md).

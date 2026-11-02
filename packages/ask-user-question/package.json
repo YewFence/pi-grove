@@ -1,0 +1,50 @@
+{
+  "name": "@pi-grove/ask-user-question",
+  "version": "0.1.0",
+  "description": "Pi extension. A structured questionnaire the model can put to you when it would otherwise guess, with typed options instead of free-form replies.",
+  "keywords": [
+    "pi-package"
+  ],
+  "homepage": "https://github.com/YewFence/pi-grove/tree/main/packages/ask-user-question#readme",
+  "bugs": {
+    "url": "https://github.com/YewFence/pi-grove/issues"
+  },
+  "license": "MIT",
+  "author": "juicesharp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YewFence/pi-grove.git",
+    "directory": "packages/ask-user-question"
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./events": "./src/events.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "aube exec tsc --noEmit",
+    "test": "aube exec vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

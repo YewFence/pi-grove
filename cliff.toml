@@ -12,10 +12,9 @@
 features_always_bump_minor = true
 breaking_always_bump_major = false
 
-# [remote.github]
-# owner = "orhun"
-# repo = "git-cliff"
-# token = ""
+[remote.github]
+owner = "YewFence"
+repo = "pi-grove"
 
 [changelog]
 # A Tera template to be rendered for each release in the changelog.
@@ -68,6 +67,7 @@ split_commits = false
 commit_preprocessors = [{ pattern = '\((\w+\s)?#([0-9]+)\)', replace = "" }]
 # Exclude commits that are not matched by any commit parser.
 filter_commits = false
+commit_parsers = [{ message = '^chore\([^)]*\): release ', skip = true }]
 # Order releases topologically instead of chronologically.
 topo_order = false
 # Order of commits in each group/release within the changelog.

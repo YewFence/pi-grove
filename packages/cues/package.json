@@ -1,0 +1,57 @@
+{
+  "name": "pi-cues",
+  "version": "0.3.0",
+  "description": "Deterministic context loading for the pi coding agent: a central trigger table maps bash commands and tool-operated file paths to skills and prompt files",
+  "keywords": [
+    "pi-package"
+  ],
+  "homepage": "https://github.com/YewFence/pi-grove/tree/main/packages/cues#readme",
+  "bugs": {
+    "url": "https://github.com/YewFence/pi-grove/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YewFence/pi-grove.git",
+    "directory": "packages/cues"
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "CHANGELOG.md",
+    "skills",
+    "config.schema.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/piCues/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "aube exec tsc --noEmit",
+    "test": "aube exec vitest run"
+  },
+  "dependencies": {
+    "picomatch": "^4.0.7",
+    "shell-quote": "^1.12.0",
+    "smol-toml": "^1.9.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "pi": {
+    "extensions": [
+      "./src/piCues/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}

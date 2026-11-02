@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "src",
+    "tests"
+  ],
+  "extends": "../../tsconfig.base.json"
+}

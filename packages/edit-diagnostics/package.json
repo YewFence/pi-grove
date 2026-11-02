@@ -1,0 +1,46 @@
+{
+  "name": "@pi-grove/edit-diagnostics",
+  "version": "0.1.0",
+  "description": "Actionable diagnostics for failed pi edits",
+  "keywords": [
+    "pi-package"
+  ],
+  "homepage": "https://github.com/YewFence/pi-grove/tree/main/packages/edit-diagnostics#readme",
+  "bugs": {
+    "url": "https://github.com/YewFence/pi-grove/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YewFence/pi-grove.git",
+    "directory": "packages/edit-diagnostics"
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "aube exec tsc --noEmit",
+    "test": "node --test test/"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
