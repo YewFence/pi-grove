@@ -62,9 +62,11 @@ version = 1
 name = "mise"
 command = ["mise", "hook-env", "-s", "bash", "--force"]
 timeout_ms = 3000
+quiet = false
+report_stderr_on_success = true
 ```
 
-`command` 是非空参数数组,直接启动进程,不经过 shell 展开。`timeout_ms` 可选,默认 3000,必须是 1 到 2147483647 之间的整数。hook 在本次 bash 的工作目录中执行,继承 bash 的初始环境。需要 shell 语法时显式调用 `bash -c`,复杂逻辑可以写成独立脚本。脚本向 stdout 输出 `export`、`unset` 等 bash 代码;stderr 不会进入模型输出。相对脚本路径按本次工作目录解析,跨项目使用的脚本建议写绝对路径。
+`command` 是非空参数数组,直接启动进程,不经过 shell 展开。`timeout_ms` 可选,默认 3000,必须是 1 到 2147483647 之间的整数。hook 在本次 bash 的工作目录中执行,继承 bash 的初始环境。需要 shell 语法时显式调用 `bash -c`,复杂逻辑可以写成独立脚本。脚本向 stdout 输出 `export`、`unset` 等 bash 代码;stderr 按成功与失败各自的配置报告,最多捕获 8 KiB。相对脚本路径按本次工作目录解析,跨项目使用的脚本建议写绝对路径。
 
 可以按需追加 direnv 或自己的脚本:
 
@@ -81,11 +83,25 @@ timeout_ms = 5000
 
 多个 hook 按声明顺序执行,随后在同一个 bash 中按顺序应用生成的代码,后面的赋值可以覆盖前面的。生成代码的进程彼此不继承前一个 hook 的环境修改;有初始化依赖时把步骤放在同一个脚本中。
 
-hook 非零退出、命令缺失、超时或 stdout 超过 1 MiB 时,该 hook 的全部输出被丢弃,其他 hook 和实际 bash 命令继续执行。首次失败和恢复时各通知一次,连续失败不重复通知,下次调用仍会重试。无效配置条目会给出文件和条目位置并跳过,其他有效条目继续使用;整个 TOML 无法解析或版本不支持时不加载其中的 hook。
+hook 非零退出、命令缺失、超时或 stdout 超过 1 MiB 时,该 hook 生成的初始化代码被丢弃,其他 hook 和实际 bash 命令继续执行。`quiet` 默认为 `false`:每次失败都会向模型报告原因和最多 8 KiB 的 stderr,不额外弹失败或恢复通知。设置 `quiet = true` 则不向模型输出该 hook 的错误,仅在首次失败和恢复时各通知用户一次。两种模式都会在下次调用时重试,取消不计作 hook 故障。
+
+`report_stderr_on_success` 默认为 `true`,独立于 `quiet`:hook 以退出码 0 完成但 stderr 非空时,向模型报告 `outcome="warning"` 的 envelope,stdout 初始化代码照常继续执行。设置为 `false` 则隐藏成功时的 stderr,不影响失败报告。扩展保留 stderr 内容,用户可用包装脚本清洗不需要的输出。
+
+错误使用独立的 `<pi-bash-jobs action="source-hook" hook="…" outcome="failed">` envelope,stderr 包在内层 `<command-output stream="stderr">` 中。每块最多 8192 字符,包含标签开销,超出部分截断并保留完整闭标签;外部输出中的边界标签会转义。诊断与实际命令输出分开投递,命令成功或失败仍由实际执行结果决定。命令转后台后才出现的 hook 错误会随 `bash_wait` 或 `bash_kill` 返回。
+
+正常执行不增加系统提示。每个 session 首次向模型报告错误时,在 envelope 内补充一句来源说明:
+
+> pi-bash-jobs: an environment preparation hook failed. Its environment update was skipped; the requested command still runs. The following block contains the hook’s error output.
+
+成功但有 stderr 时使用单独的来源说明:
+
+> pi-bash-jobs: an environment preparation hook succeeded and wrote to stderr. Its generated initialization code will run before the requested command. The following block contains the hook’s stderr output.
+
+每个 session 的首次 warning 和首次 failure 分别附带说明;后续同类诊断保留 envelope 和具体内容,省略重复解释。warning 不会消耗首次错误说明机会。静默错误不会消耗首次说明机会。配置错误使用 `action="config"` 的 envelope,在下一次 bash 调用时报告一次并使用对应的配置错误说明。无效配置条目会给出文件和条目位置并跳过,其他有效条目继续使用;整个 TOML 无法解析或版本不支持时不加载其中的 hook。
 
 取消调用会终止当前命令 hook 及其子进程,不再执行后续 hook 或实际 bash 命令。初始化代码在 `set -e` 下运行;代码语法错误或返回失败时,实际命令不会执行,错误会作为 bash 工具结果返回。source hook 的生成失败和生成代码的执行失败是两个不同阶段。
 
-通过 TypeScript 加载扩展时,仍可用 `createBashJobsExtension({ sourceHooks: [...] })` 追加编程 hook,它们在配置中的 hook 之后执行。`sourceCode({ cwd, env, signal, notify })` 返回 bash 代码或 `undefined`,异步操作应响应 `signal`。配置命令的超时和输出限制由扩展负责,编程 hook 则负责自己的资源管理。
+通过 TypeScript 加载扩展时,仍可用 `createBashJobsExtension({ sourceHooks: [...] })` 追加编程 hook,它们在配置中的 hook 之后执行。`sourceCode({ cwd, env, signal, notify, report })` 返回 bash 代码或 `undefined`,异步操作应响应 `signal`,可通过 `report` 投递结构化错误诊断。配置命令的超时和输出限制由扩展负责,编程 hook 则负责自己的资源管理。
 
 ### TUI 中的后台 job 面板
 

@@ -51,7 +51,8 @@ export function loadSourceHookConfig(agentDir = getAgentDir()): SourceHookConfig
     }
     const raw = entry as Record<string, unknown>;
     const unknownKeys = Object.keys(raw).filter(
-      (key) => !["name", "command", "timeout_ms"].includes(key),
+      (key) =>
+        !["name", "command", "timeout_ms", "quiet", "report_stderr_on_success"].includes(key),
     );
     if (unknownKeys.length) {
       result.diagnostics.push(`${source}: unknown keys ${unknownKeys.join(", ")}; skipped`);
@@ -72,6 +73,17 @@ export function loadSourceHookConfig(agentDir = getAgentDir()): SourceHookConfig
       );
       continue;
     }
+    if (raw.quiet !== undefined && typeof raw.quiet !== "boolean") {
+      result.diagnostics.push(`${source}: quiet must be a boolean; skipped`);
+      continue;
+    }
+    if (
+      raw.report_stderr_on_success !== undefined &&
+      typeof raw.report_stderr_on_success !== "boolean"
+    ) {
+      result.diagnostics.push(`${source}: report_stderr_on_success must be a boolean; skipped`);
+      continue;
+    }
     const timeoutMs = raw.timeout_ms ?? 3_000;
     if (
       !Number.isSafeInteger(timeoutMs) ||
@@ -87,6 +99,8 @@ export function loadSourceHookConfig(agentDir = getAgentDir()): SourceHookConfig
       name: raw.name,
       command: raw.command as string[],
       timeoutMs: timeoutMs as number,
+      quiet: raw.quiet === true,
+      reportStderrOnSuccess: raw.report_stderr_on_success !== false,
     });
   }
   return result;

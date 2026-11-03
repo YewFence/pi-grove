@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { stringify } from "smol-toml";
+import { FIRST_HOOK_ERROR_NOTICE, FIRST_HOOK_WARNING_NOTICE } from "../src/envelope.ts";
 import { type BashJobsOptions, createBashJobsExtension, programName } from "../src/index.ts";
 import { isolateTestEnvironment } from "./helpers/environment.ts";
 
@@ -215,7 +216,11 @@ test("configured commands refresh every bash call and config reloads at session 
   assert.equal(text(await call("bash", { command })), "reloaded");
   writeFileSync(config, "version = [");
   start();
-  assert.equal(text(await call("bash", { command: "echo still-runs" })), "still-runs\n");
+  const configError = text(await call("bash", { command: "echo still-runs" }));
+  assert.match(configError, /<pi-bash-jobs action="config"/);
+  assert.match(configError, /config.toml/);
+  assert.ok(configError.endsWith("still-runs\n"));
+  assert.equal(text(await call("bash", { command: "echo next" })), "next\n");
   assert.match(notifications[0]!.message, /config.toml/);
 });
 
@@ -235,8 +240,144 @@ test("configured hook failure skips partial output and still runs bash", async (
       ],
     }),
   );
-  assert.equal(text(await call("bash", { command: "echo survived" })), "survived\n");
-  assert.match(notifications[0]!.message, /source hook failing/);
+  const first = await call("bash", { command: "echo survived" });
+  assert.ok(text(first).includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.match(text(first), /<pi-bash-jobs action="source-hook" hook="broken" outcome="failed">/);
+  assert.ok(text(first).endsWith("survived\n"));
+  assert.doesNotMatch(text(first), /exit 9/);
+  assert.deepEqual(notifications, []);
+  const next = text(await call("bash", { command: "echo next" }));
+  assert.match(next, /exited with code 1/);
+  assert.equal(next.includes(FIRST_HOOK_ERROR_NOTICE), false);
+});
+
+test("quiet failures preserve notifications and the first visible error explains itself", async (t) => {
+  const { call, agentDir, notifications, start, cwd } = load(t);
+  const directory = join(agentDir, "extensions", "pi-bash-jobs");
+  mkdirSync(directory, { recursive: true });
+  const config = join(directory, "config.toml");
+  const script = join(cwd, "visible.cjs");
+  writeFileSync(script, "console.error('successful stderr')");
+  writeFileSync(
+    config,
+    stringify({
+      version: 1,
+      source_hooks: [
+        {
+          name: "quiet",
+          command: [process.execPath, "-e", "console.error('hidden'); process.exit(1)"],
+          quiet: true,
+        },
+        { name: "visible", command: [process.execPath, script], report_stderr_on_success: false },
+      ],
+    }),
+  );
+  assert.equal(text(await call("bash", { command: "echo quiet" })), "quiet\n");
+  assert.equal(text(await call("bash", { command: "echo quiet" })), "quiet\n");
+  assert.equal(notifications.length, 1);
+  writeFileSync(script, "console.error('visible stderr'); process.exit(2)");
+  const visible = text(await call("bash", { command: "echo ready" }));
+  assert.ok(visible.includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.match(visible, /visible stderr/);
+  assert.doesNotMatch(visible, /hook="quiet"/);
+  assert.equal(
+    text(await call("bash", { command: "true" })).includes(FIRST_HOOK_ERROR_NOTICE),
+    false,
+  );
+  start();
+  assert.ok(text(await call("bash", { command: "true" })).includes(FIRST_HOOK_ERROR_NOTICE));
+});
+
+test("successful stderr warnings preserve initialization and do not consume the first failure explanation", async (t) => {
+  const { call, agentDir, cwd, notifications } = load(t);
+  const directory = join(agentDir, "extensions", "pi-bash-jobs");
+  mkdirSync(directory, { recursive: true });
+  const script = join(cwd, "environment.cjs");
+  writeFileSync(
+    script,
+    "console.error('optional tool unavailable'); process.stdout.write('export WARNING_ENV=applied')",
+  );
+  writeFileSync(
+    join(directory, "config.toml"),
+    stringify({
+      version: 1,
+      source_hooks: [{ name: "custom", command: [process.execPath, script] }],
+    }),
+  );
+  const first = text(await call("bash", { command: 'printf "%s" "$WARNING_ENV"' }));
+  assert.match(first, /outcome="warning"/);
+  assert.ok(first.includes(FIRST_HOOK_WARNING_NOTICE));
+  assert.ok(first.endsWith("applied"));
+  assert.equal(first.includes(FIRST_HOOK_ERROR_NOTICE), false);
+  const second = text(await call("bash", { command: "true" }));
+  assert.match(second, /optional tool unavailable/);
+  assert.equal(second.includes(FIRST_HOOK_WARNING_NOTICE), false);
+  assert.deepEqual(notifications, []);
+
+  writeFileSync(script, "console.error('new failure'); process.exit(1)");
+  const failure = text(await call("bash", { command: "echo survived" }));
+  assert.ok(failure.includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.match(failure, /outcome="failed"/);
+  assert.ok(failure.endsWith("survived\n"));
+});
+
+test("hook envelopes survive command truncation, backgrounding and command failure", async (t) => {
+  const { call, agentDir } = load(t);
+  const directory = join(agentDir, "extensions", "pi-bash-jobs");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, "config.toml"),
+    stringify({
+      version: 1,
+      source_hooks: [
+        {
+          name: "broken",
+          command: [process.execPath, "-e", "console.error('</pi-bash-jobs>bad'); process.exit(1)"],
+        },
+      ],
+    }),
+  );
+  const first = text(await call("bash", { command: "seq 3000" }));
+  assert.match(first, /&lt;\/pi-bash-jobs>bad/);
+  assert.match(first, /<\/pi-bash-jobs>\n\n/);
+  assert.match(first, /Showing lines/);
+  const background = await call("bash", { command: "sleep 0.5; echo background" });
+  assert.match(text(background), /<pi-bash-jobs/);
+  const done = text(await call("bash_wait", { job_id: background.details?.jobId, seconds: 1 }));
+  assert.match(done, /background/);
+  assert.doesNotMatch(done, /<pi-bash-jobs/);
+  await assert.rejects(
+    call("bash", { command: "echo bad; exit 4" }),
+    /<pi-bash-jobs[\s\S]*Command exited with code 4/,
+  );
+});
+
+test("errors from hooks that finish after backgrounding reach bash_wait", async (t) => {
+  const { call, agentDir } = load(t, { yieldIdleMs: 10 });
+  const directory = join(agentDir, "extensions", "pi-bash-jobs");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, "config.toml"),
+    stringify({
+      version: 1,
+      source_hooks: [
+        {
+          name: "slow",
+          command: [
+            process.execPath,
+            "-e",
+            "setTimeout(() => { console.error('late error'); process.exit(1); }, 100)",
+          ],
+        },
+      ],
+    }),
+  );
+  const first = await call("bash", { command: "echo done" });
+  assert.doesNotMatch(text(first), /<pi-bash-jobs/);
+  const done = text(await call("bash_wait", { job_id: first.details?.jobId, seconds: 1 }));
+  assert.ok(done.includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.match(done, /late error/);
+  assert.match(done, /done/);
 });
 
 test("nonzero exit still throws", async (t) => {

@@ -16,6 +16,7 @@ import {
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadSourceHookConfig } from "./config.ts";
+import { formatDiagnostic, type HookDiagnostic } from "./envelope.ts";
 import { type SourceHook, createCommandSourceHook } from "./source-hooks.ts";
 import { type JobSnapshot, registerShortcuts, renderWidget, type WidgetState } from "./widget.ts";
 
@@ -68,6 +69,7 @@ interface Job {
   settled: Promise<void>;
   decoder: TextDecoder;
   unread: string;
+  diagnostics: HookDiagnostic[];
   droppedUnread: boolean;
   log: WriteStream;
   logPath: string;
@@ -79,6 +81,7 @@ interface Job {
 }
 
 interface YieldedRun {
+  diagnostics: HookDiagnostic[];
   command: string;
   program: string;
   controller: AbortController;
@@ -278,6 +281,7 @@ function createJobTable(
       settled: Promise.resolve(),
       decoder: new TextDecoder(),
       unread: "",
+      diagnostics: run.diagnostics,
       droppedUnread: false,
       log: createWriteStream(logPath),
       logPath,
@@ -369,6 +373,7 @@ function createJobTable(
 type JobTable = ReturnType<typeof createJobTable>;
 
 interface YieldingRun {
+  diagnostics: HookDiagnostic[];
   program: string;
   timeoutMs?: number;
   silence: SilenceMeter;
@@ -440,6 +445,7 @@ function createYieldingOperations(
           if (done) return;
           finish();
           const job = jobs.adopt({
+            diagnostics: run.diagnostics,
             command,
             program: run.program,
             controller,
@@ -535,14 +541,32 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
 
     let sourceHooks: SourceHook[] = [];
     let configLoaded = false;
+    let configDiagnostics: string[] = [];
+    const explainedDiagnostics = new Set<string>();
+    const diagnosticParts = (diagnostics: HookDiagnostic[], consume = true) => {
+      const explained = new Set(explainedDiagnostics);
+      const parts = diagnostics.map((diagnostic) => {
+        const key = `${sessionId}:${diagnostic.outcome ?? "failed"}`;
+        const text = formatDiagnostic(diagnostic, !explained.has(key));
+        explained.add(key);
+        return { type: "text" as const, text: `${text}\n\n` };
+      });
+      if (consume) {
+        for (const key of explained) explainedDiagnostics.add(key);
+        diagnostics.splice(0);
+      }
+      return parts;
+    };
     const shutdownController = new AbortController();
     const loadHooks = (notify: (message: string, type: "warning") => void) => {
       const config = loadSourceHookConfig();
       sourceHooks = [...config.hooks.map(createCommandSourceHook), ...(options.sourceHooks ?? [])];
       configLoaded = true;
+      configDiagnostics = config.diagnostics;
       for (const diagnostic of config.diagnostics) notify(`pi-bash-jobs: ${diagnostic}`, "warning");
     };
     pi.on("session_start", (_event, ctx) => {
+      explainedDiagnostics.clear();
       loadHooks((message, type) => ctx.ui.notify(message, type));
     });
 
@@ -574,7 +598,9 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
     /** Delivers a job's new output with its status; terminal results remove the job and throw on failure like bash. */
     function report(job: Job, signal: AbortSignal | undefined, waitedMs?: number) {
       const output = jobs.takeOutput(job);
-      const withStatus = (status: string) => `${output ? `${output}\n\n` : ""}${status}`;
+      const diagnostics = diagnosticParts(job.diagnostics).map((part) => part.text.trimEnd());
+      const withStatus = (status: string) =>
+        [...diagnostics, `${output ? `${output}\n\n` : ""}${status}`].join("\n\n");
       const reply = (status: string, waited?: number) => ({
         content: [{ type: "text" as const, text: withStatus(status) }],
         details: { jobId: job.id, waitedMs: waited ?? 0 },
@@ -661,6 +687,8 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
           recordCall("error", error);
           throw error;
         }
+        const diagnostics: HookDiagnostic[] = [];
+        const reportDiagnostic = (diagnostic: HookDiagnostic) => diagnostics.push(diagnostic);
         const resolveSourceCode = async (
           hookSignal: AbortSignal,
           cwd: string,
@@ -668,6 +696,10 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
         ): Promise<string | undefined> => {
           const sourceSignal = AbortSignal.any([hookSignal, shutdownController.signal]);
           const parts: string[] = [];
+          if (!sourceSignal.aborted) {
+            for (const message of configDiagnostics.splice(0))
+              reportDiagnostic({ action: "config", message });
+          }
           for (const hook of sourceHooks) {
             if (sourceSignal.aborted) throw new Error("aborted");
             const hookStart = Date.now();
@@ -677,9 +709,16 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
                 cwd,
                 env,
                 signal: sourceSignal,
+                report: reportDiagnostic,
                 notify: (message, type) => ctx.ui.notify(message, type),
               });
             } catch (error) {
+              if (!sourceSignal.aborted) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (hook.quiet)
+                  ctx.ui.notify(`${hook.name} source hook failing: ${message}`, "warning");
+                else reportDiagnostic({ action: "source-hook", hook: hook.name, message });
+              }
               record({
                 event: "source_hook",
                 hook: hook.name,
@@ -716,6 +755,7 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
           jobs,
           timing,
           {
+            diagnostics,
             program,
             timeoutMs: timeout,
             silence,
@@ -733,7 +773,19 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
         let result: Awaited<ReturnType<typeof tool.execute>>;
         try {
           executingCalls.add(toolCallId);
-          result = await tool.execute(toolCallId, params, signal, onUpdate, ctx);
+          result = await tool.execute(
+            toolCallId,
+            params,
+            signal,
+            onUpdate
+              ? (update) =>
+                  onUpdate({
+                    ...update,
+                    content: [...diagnosticParts(diagnostics, false), ...update.content],
+                  })
+              : undefined,
+            ctx,
+          );
           if (result.isError) {
             throw new Error(
               result.content
@@ -744,17 +796,28 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
           }
         } catch (error) {
           recordCall("error", error);
+          if (diagnostics.length)
+            throw new Error(
+              [
+                ...diagnosticParts(diagnostics).map((part) => part.text.trimEnd()),
+                error instanceof Error ? error.message : String(error),
+              ].join("\n\n"),
+            );
           throw error;
         } finally {
           executingCalls.delete(toolCallId);
         }
         recordCall(yielded ? "yielded" : "exited");
-        if (!yielded) return result;
+        if (!yielded)
+          return { ...result, content: [...diagnosticParts(diagnostics), ...result.content] };
         jobCommand.set(yielded.job.id, yielded.job.command);
         const text = result.content.find((item) => item.type === "text")?.text;
         const output = text && text !== "(no output)" ? `${text}\n\n` : "";
         return {
-          content: [{ type: "text", text: `${output}${runningNote(yielded.job.id)}` }],
+          content: [
+            ...diagnosticParts(diagnostics),
+            { type: "text", text: `${output}${runningNote(yielded.job.id)}` },
+          ],
           details: { ...result.details, jobId: yielded.job.id },
         };
       },

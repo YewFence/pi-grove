@@ -31,11 +31,53 @@ test("loads ordered commands from PI_CODING_AGENT_DIR with a default timeout", (
   );
   assert.deepEqual(loadSourceHookConfig(), {
     hooks: [
-      { name: "first", command: ["custom", "", "two words"], timeoutMs: 3000 },
-      { name: "second", command: ["other"], timeoutMs: 5000 },
+      {
+        name: "first",
+        command: ["custom", "", "two words"],
+        timeoutMs: 3000,
+        quiet: false,
+        reportStderrOnSuccess: true,
+      },
+      {
+        name: "second",
+        command: ["other"],
+        timeoutMs: 5000,
+        quiet: false,
+        reportStderrOnSuccess: true,
+      },
     ],
     diagnostics: [],
   });
+});
+
+test("quiet is explicitly configurable", (t) => {
+  const { write } = setup(t);
+  write('version = 1\n[[source_hooks]]\nname = "quiet"\ncommand = ["custom"]\nquiet = true');
+  assert.deepEqual(loadSourceHookConfig().hooks, [
+    {
+      name: "quiet",
+      command: ["custom"],
+      timeoutMs: 3000,
+      quiet: true,
+      reportStderrOnSuccess: true,
+    },
+  ]);
+});
+
+test("successful stderr reporting is independently configurable", (t) => {
+  const { write } = setup(t);
+  write(
+    'version = 1\n[[source_hooks]]\nname = "custom"\ncommand = ["custom"]\nquiet = false\nreport_stderr_on_success = false',
+  );
+  assert.deepEqual(loadSourceHookConfig().hooks, [
+    {
+      name: "custom",
+      command: ["custom"],
+      timeoutMs: 3000,
+      quiet: false,
+      reportStderrOnSuccess: false,
+    },
+  ]);
 });
 
 test("malformed TOML and unsupported versions produce file diagnostics", (t) => {
@@ -55,13 +97,17 @@ test("invalid hook entries are skipped while valid entries remain active", (t) =
     'name = ""\ncommand = ["ok"]',
     'name = "bad-command"\ncommand = "bad"',
     'name = "bad-timeout"\ncommand = ["ok"]\ntimeout_ms = 0',
+    'name = "bad-quiet"\ncommand = ["ok"]\nquiet = "true"',
+    'name = "bad-report-stderr"\ncommand = ["ok"]\nreport_stderr_on_success = "false"',
     'name = "unknown-key"\ncommand = ["ok"]\ntimeout = 1',
     'name = "valid"\ncommand = ["ok"]',
   ];
   write("version = 1\n" + entries.map((entry) => `[[source_hooks]]\n${entry}\n`).join(""));
   const result = loadSourceHookConfig();
-  assert.deepEqual(result.hooks, [{ name: "valid", command: ["ok"], timeoutMs: 3000 }]);
-  assert.equal(result.diagnostics.length, 4);
+  assert.deepEqual(result.hooks, [
+    { name: "valid", command: ["ok"], timeoutMs: 3000, quiet: false, reportStderrOnSuccess: true },
+  ]);
+  assert.equal(result.diagnostics.length, 6);
   result.diagnostics.forEach((message, index) =>
     assert.ok(message.includes(`${file}: source_hooks[${index}]`)),
   );

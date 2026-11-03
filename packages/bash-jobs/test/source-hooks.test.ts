@@ -10,9 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { HookDiagnostic } from "../src/envelope.ts";
 import { createCommandSourceHook } from "../src/source-hooks.ts";
 
-function fixture(script: string, timeoutMs = 2_000) {
+function fixture(script: string, timeoutMs = 2_000, quiet = false, reportStderrOnSuccess = true) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-source-hook-"));
   const path = join(cwd, "hook.cjs");
   writeFileSync(path, script);
@@ -23,6 +24,8 @@ function fixture(script: string, timeoutMs = 2_000) {
       name: "custom",
       command: [process.execPath, path, "$(touch injected)", ""],
       timeoutMs,
+      quiet,
+      reportStderrOnSuccess,
     }),
   };
 }
@@ -42,7 +45,11 @@ test("command hook preserves argv, cwd and environment and returns only stdout",
 });
 
 test("failed hooks discard partial stdout and notify only on failure and recovery transitions", async () => {
-  const { cwd, path, hook } = fixture("process.stdout.write('export PARTIAL=1'); process.exit(2)");
+  const { cwd, path, hook } = fixture(
+    "process.stdout.write('export PARTIAL=1'); process.exit(2)",
+    2_000,
+    true,
+  );
   const notices: string[] = [];
   const ctx = { cwd, notify: (message: string) => notices.push(message) };
   assert.equal(await hook.sourceCode(ctx), undefined);
@@ -54,6 +61,61 @@ test("failed hooks discard partial stdout and notify only on failure and recover
   assert.equal(await hook.sourceCode(ctx), "export READY=1");
   assert.equal(notices.length, 2);
   assert.match(notices[1]!, /recovered/);
+});
+
+test("default failures report bounded stderr every time and successful stderr becomes a warning", async () => {
+  const { cwd, path, hook } = fixture("console.error('x'.repeat(20000)); process.exit(3)");
+  const reports: Array<{ message: string; stderr?: string }> = [];
+  const notices: string[] = [];
+  const ctx = {
+    cwd,
+    report: (diagnostic: { message: string; stderr?: string }) => reports.push(diagnostic),
+    notify: (message: string) => notices.push(message),
+  };
+  await hook.sourceCode(ctx);
+  await hook.sourceCode(ctx);
+  assert.equal(reports.length, 2);
+  assert.match(reports[0]!.message, /exited with code 3/);
+  assert.ok(reports[0]!.stderr!.length < 8300);
+  assert.match(reports[0]!.stderr!, /truncated/);
+  writeFileSync(path, "console.error('successful stderr'); process.stdout.write('export OK=1')");
+  assert.equal(await hook.sourceCode(ctx), "export OK=1");
+  assert.equal(reports.length, 3);
+  assert.equal((reports[2] as HookDiagnostic).outcome, "warning");
+  assert.equal(reports[2]!.stderr, "successful stderr\n");
+  assert.deepEqual(notices, []);
+});
+
+test("successful stderr reporting and quiet failures are independent", async () => {
+  for (const quiet of [false, true]) {
+    for (const reportStderrOnSuccess of [false, true]) {
+      const { cwd, path, hook } = fixture(
+        "console.error('warning'); process.stdout.write('export OK=1')",
+        2_000,
+        quiet,
+        reportStderrOnSuccess,
+      );
+      const reports: HookDiagnostic[] = [];
+      const notices: string[] = [];
+      const ctx = {
+        cwd,
+        report: (diagnostic: HookDiagnostic) => reports.push(diagnostic),
+        notify: (message: string) => notices.push(message),
+      };
+      assert.equal(await hook.sourceCode(ctx), "export OK=1");
+      assert.equal(reports.length, reportStderrOnSuccess ? 1 : 0);
+      if (reportStderrOnSuccess) assert.equal(reports[0]!.outcome, "warning");
+      reports.length = 0;
+      writeFileSync(path, "console.error('failure'); process.exit(2)");
+      assert.equal(await hook.sourceCode(ctx), undefined);
+      assert.equal(reports.length, quiet ? 0 : 1);
+      assert.equal(notices.length, quiet ? 1 : 0);
+      reports.length = 0;
+      writeFileSync(path, "process.stdout.write('export OK=1')");
+      assert.equal(await hook.sourceCode(ctx), "export OK=1");
+      assert.deepEqual(reports, []);
+    }
+  }
 });
 
 test("missing commands and missing working directories can recover on later calls", async () => {
@@ -74,7 +136,7 @@ test("missing commands and missing working directories can recover on later call
 });
 
 test("hook timeout terminates its process and discards output", async () => {
-  const { cwd, hook } = fixture("setInterval(() => {}, 1000)", 100);
+  const { cwd, hook } = fixture("setInterval(() => {}, 1000)", 100, true);
   const notices: string[] = [];
   assert.equal(
     await hook.sourceCode({ cwd, notify: (message) => notices.push(message) }),
@@ -114,7 +176,7 @@ test(
 );
 
 test("oversized stdout is discarded", async () => {
-  const { cwd, hook } = fixture("process.stdout.write('x'.repeat(2 * 1024 * 1024))");
+  const { cwd, hook } = fixture("process.stdout.write('x'.repeat(2 * 1024 * 1024))", 2_000, true);
   const notices: string[] = [];
   assert.equal(
     await hook.sourceCode({ cwd, notify: (message) => notices.push(message) }),

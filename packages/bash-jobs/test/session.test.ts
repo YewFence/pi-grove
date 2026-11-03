@@ -16,6 +16,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { FIRST_HOOK_ERROR_NOTICE } from "../src/envelope.ts";
 import { createBashJobsExtension } from "../src/index.ts";
 import { isolateTestEnvironment } from "./helpers/environment.ts";
 
@@ -98,6 +99,43 @@ test("override runs inside a real session and other extensions' bash hooks still
     assert.deepEqual(hookedInputs, ['sleep 1; echo "$SESSION_ENV"']);
     assert.match(texts[0] ?? "", /^hooked\n[\s\S]*still running in the background as job_id 1/);
     assert.match(texts[1] ?? "", /^late\n[\s\S]*exited with code 0/);
+    writeFileSync(
+      join(configDir, "config.toml"),
+      stringify({
+        version: 1,
+        source_hooks: [
+          {
+            name: "broken",
+            command: [process.execPath, "-e", "console.error('session error'); process.exit(2)"],
+          },
+        ],
+      }),
+    );
+    await session.extensionRunner.emit({ type: "session_start", reason: "reload" });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "echo first" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxToolCall("bash", { command: "echo second" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ]);
+    await session.prompt("run again");
+    const failures = session.messages.filter((message) => message.role === "toolResult").slice(-2);
+    const diagnostics = failures.map((result) =>
+      result.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+    );
+    assert.deepEqual(
+      failures.map((result) => result.isError),
+      [false, false],
+    );
+    assert.ok(diagnostics[0]!.includes(FIRST_HOOK_ERROR_NOTICE));
+    assert.equal(diagnostics[1]!.includes(FIRST_HOOK_ERROR_NOTICE), false);
+    for (const diagnostic of diagnostics) {
+      assert.match(diagnostic, /<pi-bash-jobs action="source-hook" hook="broken"/);
+      assert.match(diagnostic, /session error/);
+    }
   } finally {
     await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
     session.dispose();

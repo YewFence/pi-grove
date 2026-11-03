@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { HookDiagnostic } from "./envelope.ts";
 
 /** Context for generating shell setup before a bash command starts. */
 export interface SourceHookContext {
@@ -6,11 +7,13 @@ export interface SourceHookContext {
   signal?: AbortSignal;
   env?: NodeJS.ProcessEnv;
   notify?: (message: string, type: "info" | "warning" | "error") => void;
+  report?: (diagnostic: HookDiagnostic) => void;
 }
 
 /** Produces bash code; undefined skips initialization for this hook. */
 export interface SourceHook {
   name: string;
+  quiet?: boolean;
   sourceCode(ctx: SourceHookContext): string | undefined | Promise<string | undefined>;
 }
 
@@ -18,11 +21,25 @@ export interface CommandSourceHookConfig {
   name: string;
   command: string[];
   timeoutMs: number;
+  quiet?: boolean;
+  reportStderrOnSuccess?: boolean;
 }
 
 const MAX_SOURCE_BYTES = 1024 * 1024;
 
-function commandOutput(config: CommandSourceHookConfig, ctx: SourceHookContext): Promise<string> {
+class CommandHookError extends Error {
+  readonly stderr: string;
+
+  constructor(message: string, stderr: string) {
+    super(message);
+    this.stderr = stderr;
+  }
+}
+
+function commandOutput(
+  config: CommandSourceHookConfig,
+  ctx: SourceHookContext,
+): Promise<{ code: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     if (ctx.signal?.aborted) {
       reject(new Error("aborted"));
@@ -32,11 +49,14 @@ function commandOutput(config: CommandSourceHookConfig, ctx: SourceHookContext):
       cwd: ctx.cwd,
       env: ctx.env,
       detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
     const chunks: Buffer[] = [];
     let bytes = 0;
+    const stderrChunks: Buffer[] = [];
+    let stderrBytes = 0;
+    let stderrTruncated = false;
     let failure: Error | undefined;
     const stop = (error: Error) => {
       if (failure) return;
@@ -68,42 +88,75 @@ function commandOutput(config: CommandSourceHookConfig, ctx: SourceHookContext):
       if (bytes > MAX_SOURCE_BYTES) stop(new Error("stdout exceeds 1 MiB"));
       else if (!failure) chunks.push(data);
     });
+    child.stderr.on("data", (data: Buffer) => {
+      const remaining = 8_192 - stderrBytes;
+      if (data.length > remaining) stderrTruncated = true;
+      if (remaining > 0) {
+        const part = data.subarray(0, remaining);
+        stderrChunks.push(part);
+        stderrBytes += part.length;
+      }
+    });
     child.on("error", (error: NodeJS.ErrnoException) => {
       failure ??= new Error(`unable to start command (${error.code ?? "unknown error"})`);
     });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       ctx.signal?.removeEventListener("abort", abort);
-      if (failure) reject(failure);
-      else if (code !== 0)
-        reject(new Error(signal ? `terminated by ${signal}` : `exited with code ${code}`));
-      else resolve(Buffer.concat(chunks).toString("utf8"));
+      const message =
+        failure?.message ??
+        (code !== 0
+          ? signal
+            ? `terminated by ${signal}`
+            : `exited with code ${code}`
+          : undefined);
+      const stderr =
+        Buffer.concat(stderrChunks).toString("utf8") +
+        (stderrTruncated ? "\n[Stderr output truncated.]" : "");
+      if (message) reject(new CommandHookError(message, stderr));
+      else resolve({ code: Buffer.concat(chunks).toString("utf8"), stderr });
     });
   });
 }
 
-/** Runs an argv command and returns its stdout as bash setup, reporting failure transitions once. */
+/** Runs an argv command and reports stderr and failures according to their independent settings. */
 export function createCommandSourceHook(config: CommandSourceHookConfig): SourceHook {
   let failing = false;
   return {
     name: config.name,
+    quiet: config.quiet,
     async sourceCode(ctx) {
       try {
-        const code = await commandOutput(config, ctx);
+        const { code, stderr } = await commandOutput(config, ctx);
+        if (stderr && config.reportStderrOnSuccess !== false) {
+          ctx.report?.({
+            action: "source-hook",
+            outcome: "warning",
+            hook: config.name,
+            message:
+              "Hook exited with code 0. Its generated initialization code will run before the requested command.",
+            stderr,
+          });
+        }
         if (failing) {
           failing = false;
-          ctx.notify?.(`${config.name} source hook recovered`, "info");
+          if (config.quiet) ctx.notify?.(`${config.name} source hook recovered`, "info");
         }
         return code || undefined;
       } catch (error) {
         if (ctx.signal?.aborted) return undefined;
-        if (!failing) {
-          failing = true;
-          ctx.notify?.(
-            `${config.name} source hook failing: ${error instanceof Error ? error.message : String(error)}`,
-            "warning",
-          );
+        const message = error instanceof Error ? error.message : String(error);
+        if (!config.quiet) {
+          ctx.report?.({
+            action: "source-hook",
+            hook: config.name,
+            message,
+            stderr: error instanceof CommandHookError ? error.stderr : undefined,
+          });
+        } else if (!failing) {
+          ctx.notify?.(`${config.name} source hook failing: ${message}`, "warning");
         }
+        failing = true;
         return undefined;
       }
     },
