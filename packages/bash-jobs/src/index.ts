@@ -15,6 +15,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { loadSourceHookConfig } from "./config.ts";
+import { type SourceHook, createCommandSourceHook } from "./source-hooks.ts";
 import { type JobSnapshot, registerShortcuts, renderWidget, type WidgetState } from "./widget.ts";
 
 export interface JobTiming {
@@ -145,7 +147,14 @@ type EventRecord =
       waitedMs: number;
       state: JobState | "unknown";
     }
-  | { event: "bash_kill"; jobId: number; waitedMs: number; state: JobState | "unknown" };
+  | { event: "bash_kill"; jobId: number; waitedMs: number; state: JobState | "unknown" }
+  | {
+      event: "source_hook";
+      hook: string;
+      outcome: "ok" | "skipped" | "failed" | "disabled";
+      elapsedMs: number;
+      errorMessage?: string;
+    };
 
 /** Classifies a failed bash call from the built-in tool's error message; telemetry only, never thrown. */
 function classifyError(error: unknown): { errorKind: BashErrorKind; exitCode?: number } {
@@ -364,6 +373,12 @@ interface YieldingRun {
   timeoutMs?: number;
   silence: SilenceMeter;
   startedAt: number;
+  /** Resolves shell setup before spawning; cancellation prevents subsequent hooks from starting. */
+  sourceCode?: (
+    signal: AbortSignal,
+    cwd: string,
+    env?: NodeJS.ProcessEnv,
+  ) => Promise<string | undefined>;
   onYield: (job: Job, reason: YieldReason) => void;
 }
 
@@ -384,23 +399,36 @@ function createYieldingOperations(
       const controller = new AbortController();
       let sink = options.onData;
       let onActivity: (() => void) | undefined;
-      const settled = base.exec(command, cwd, {
-        ...options,
-        timeout: undefined,
-        signal: controller.signal,
-        onData: (data) => {
-          run.silence.touch();
-          sink(data);
-          onActivity?.();
-        },
-      });
+      let preparing = true;
+      const settled = (async () => {
+        const sourceCode = await run.sourceCode?.(controller.signal, cwd, options.env);
+        preparing = false;
+        if (controller.signal.aborted) throw new Error("aborted");
+        const finalCommand = sourceCode ? `set -e\n${sourceCode}\nset +e\n${command}` : command;
+        return base.exec(finalCommand, cwd, {
+          ...options,
+          timeout: undefined,
+          signal: controller.signal,
+          onData: (data) => {
+            run.silence.touch();
+            sink(data);
+            onActivity?.();
+          },
+        });
+      })();
       settled.catch(() => {});
 
       return new Promise((resolve, reject) => {
         let idleTimer: NodeJS.Timeout | undefined;
         let ceilingTimer: NodeJS.Timeout | undefined;
         let done = false;
-        const forwardAbort = () => controller.abort();
+        const forwardAbort = () => {
+          controller.abort();
+          if (preparing && !done) {
+            finish();
+            reject(new Error("aborted"));
+          }
+        };
         const finish = () => {
           done = true;
           clearTimeout(idleTimer);
@@ -437,7 +465,7 @@ function createYieldingOperations(
           () => yieldToBackground(ceilingIsTimeout ? "timeout" : "max"),
           ceilingIsTimeout ? run.timeoutMs : timing.yieldMaxMs,
         );
-        if (options.signal?.aborted) controller.abort();
+        if (options.signal?.aborted) forwardAbort();
         else options.signal?.addEventListener("abort", forwardAbort, { once: true });
         settled.then(
           (result) => {
@@ -486,12 +514,38 @@ const JOB_ID = Type.Number({
   description: "Background job ID, taken from the bash tool's 'still running as job_id N' note",
 });
 
-export function createBashJobsExtension(timing: JobTiming = DEFAULT_TIMING) {
+export interface BashJobsOptions extends Partial<JobTiming> {
+  /** Additional hooks, applied after hooks from the user's config.toml. */
+  sourceHooks?: SourceHook[];
+}
+
+export function createBashJobsExtension(options: BashJobsOptions = {}) {
+  const timing: JobTiming = {
+    yieldIdleMs: options.yieldIdleMs ?? DEFAULT_TIMING.yieldIdleMs,
+    yieldMaxMs: options.yieldMaxMs ?? DEFAULT_TIMING.yieldMaxMs,
+    waitFloorMs: options.waitFloorMs ?? DEFAULT_TIMING.waitFloorMs,
+    waitMaxMs: options.waitMaxMs ?? DEFAULT_TIMING.waitMaxMs,
+  };
+
   return function bashJobs(pi: ExtensionAPI): void {
     const eventLog = createEventLog(join(stateDir(), "pi-bash-jobs", "events.jsonl"));
     let sessionId = "";
     const record: RecordEvent = (event) => eventLog.record(sessionId, event);
     const recordSync: RecordEvent = (event) => eventLog.recordSync(sessionId, event);
+
+    let sourceHooks: SourceHook[] = [];
+    let configLoaded = false;
+    const shutdownController = new AbortController();
+    const loadHooks = (notify: (message: string, type: "warning") => void) => {
+      const config = loadSourceHookConfig();
+      sourceHooks = [...config.hooks.map(createCommandSourceHook), ...(options.sourceHooks ?? [])];
+      configLoaded = true;
+      for (const diagnostic of config.diagnostics) notify(`pi-bash-jobs: ${diagnostic}`, "warning");
+    };
+    pi.on("session_start", (_event, ctx) => {
+      loadHooks((message, type) => ctx.ui.notify(message, type));
+    });
+
     const widgetState: WidgetState = { folded: true };
     let renderTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -578,6 +632,7 @@ export function createBashJobsExtension(timing: JobTiming = DEFAULT_TIMING) {
       async execute(toolCallId, params, signal, onUpdate, ctx) {
         sessionId = ctx.sessionManager.getSessionId();
         widgetState.ctx = ctx;
+        if (!configLoaded) loadHooks((message, type) => ctx.ui.notify(message, type));
         const settings = SettingsManager.create(ctx.cwd, undefined, {
           projectTrusted: ctx.isProjectTrusted(),
         });
@@ -606,6 +661,56 @@ export function createBashJobsExtension(timing: JobTiming = DEFAULT_TIMING) {
           recordCall("error", error);
           throw error;
         }
+        const resolveSourceCode = async (
+          hookSignal: AbortSignal,
+          cwd: string,
+          env?: NodeJS.ProcessEnv,
+        ): Promise<string | undefined> => {
+          const sourceSignal = AbortSignal.any([hookSignal, shutdownController.signal]);
+          const parts: string[] = [];
+          for (const hook of sourceHooks) {
+            if (sourceSignal.aborted) throw new Error("aborted");
+            const hookStart = Date.now();
+            let code: string | undefined;
+            try {
+              code = await hook.sourceCode({
+                cwd,
+                env,
+                signal: sourceSignal,
+                notify: (message, type) => ctx.ui.notify(message, type),
+              });
+            } catch (error) {
+              record({
+                event: "source_hook",
+                hook: hook.name,
+                outcome: "failed",
+                elapsedMs: Date.now() - hookStart,
+                errorMessage: error instanceof Error ? error.message : String(error),
+              });
+              continue;
+            }
+            if (code) {
+              record({
+                event: "source_hook",
+                hook: hook.name,
+                outcome: "ok",
+                elapsedMs: Date.now() - hookStart,
+              });
+              parts.push(
+                `# begin source-hook: ${hook.name}\n${code}\n# end source-hook: ${hook.name}`,
+              );
+            } else {
+              record({
+                event: "source_hook",
+                hook: hook.name,
+                outcome: "skipped",
+                elapsedMs: Date.now() - hookStart,
+              });
+            }
+          }
+          if (sourceSignal.aborted) throw new Error("aborted");
+          return parts.length > 0 ? parts.join("\n") : undefined;
+        };
         const operations = createYieldingOperations(
           createLocalBashOperations({ shellPath: settings.getShellPath() }),
           jobs,
@@ -615,6 +720,7 @@ export function createBashJobsExtension(timing: JobTiming = DEFAULT_TIMING) {
             timeoutMs: timeout,
             silence,
             startedAt,
+            sourceCode: resolveSourceCode,
             onYield: (job, reason) => {
               yielded = { job, reason };
             },
@@ -731,6 +837,7 @@ export function createBashJobsExtension(timing: JobTiming = DEFAULT_TIMING) {
     });
 
     pi.on("session_shutdown", () => {
+      shutdownController.abort();
       jobs.killAll();
       eventLog.close();
     });

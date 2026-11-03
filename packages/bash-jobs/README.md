@@ -47,6 +47,46 @@ pi install /path/to/pi-grove/packages/bash-jobs
 
 session 关闭时会杀掉所有仍在运行的 job。
 
+### 环境刷新(source hooks)
+
+Source hook 是一个产出 bash 初始化代码的命令。在每次模型调用 `bash` 前,bash-jobs 执行配置中的 hook,把成功命令的 stdout 放到实际 bash 命令前执行,让长时间运行的会话跟上环境配置变化。没有配置文件时不执行任何 hook,也不内置特定环境管理工具。
+
+配置文件位于 `~/.pi/agent/extensions/pi-bash-jobs/config.toml`;设置 `PI_CODING_AGENT_DIR` 时,改为该目录下的 `extensions/pi-bash-jobs/config.toml`。只读取用户全局配置,不读取项目配置。会话启动时加载,编辑后执行 `/reload` 重新加载。
+
+例如,使用 mise 刷新环境:
+
+```toml
+version = 1
+
+[[source_hooks]]
+name = "mise"
+command = ["mise", "hook-env", "-s", "bash", "--force"]
+timeout_ms = 3000
+```
+
+`command` 是非空参数数组,直接启动进程,不经过 shell 展开。`timeout_ms` 可选,默认 3000,必须是 1 到 2147483647 之间的整数。hook 在本次 bash 的工作目录中执行,继承 bash 的初始环境。需要 shell 语法时显式调用 `bash -c`,复杂逻辑可以写成独立脚本。脚本向 stdout 输出 `export`、`unset` 等 bash 代码;stderr 不会进入模型输出。相对脚本路径按本次工作目录解析,跨项目使用的脚本建议写绝对路径。
+
+可以按需追加 direnv 或自己的脚本:
+
+```toml
+[[source_hooks]]
+name = "direnv"
+command = ["direnv", "export", "bash"]
+
+[[source_hooks]]
+name = "custom-env"
+command = ["/absolute/path/to/agent-env"]
+timeout_ms = 5000
+```
+
+多个 hook 按声明顺序执行,随后在同一个 bash 中按顺序应用生成的代码,后面的赋值可以覆盖前面的。生成代码的进程彼此不继承前一个 hook 的环境修改;有初始化依赖时把步骤放在同一个脚本中。
+
+hook 非零退出、命令缺失、超时或 stdout 超过 1 MiB 时,该 hook 的全部输出被丢弃,其他 hook 和实际 bash 命令继续执行。首次失败和恢复时各通知一次,连续失败不重复通知,下次调用仍会重试。无效配置条目会给出文件和条目位置并跳过,其他有效条目继续使用;整个 TOML 无法解析或版本不支持时不加载其中的 hook。
+
+取消调用会终止当前命令 hook 及其子进程,不再执行后续 hook 或实际 bash 命令。初始化代码在 `set -e` 下运行;代码语法错误或返回失败时,实际命令不会执行,错误会作为 bash 工具结果返回。source hook 的生成失败和生成代码的执行失败是两个不同阶段。
+
+通过 TypeScript 加载扩展时,仍可用 `createBashJobsExtension({ sourceHooks: [...] })` 追加编程 hook,它们在配置中的 hook 之后执行。`sourceCode({ cwd, env, signal, notify })` 返回 bash 代码或 `undefined`,异步操作应响应 `signal`。配置命令的超时和输出限制由扩展负责,编程 hook 则负责自己的资源管理。
+
 ### TUI 中的后台 job 面板
 
 - 有 job 在后台运行时,编辑器上方出现一个面板,折叠态只列出 running job 的编号。

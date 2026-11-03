@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { stringify } from "smol-toml";
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -17,10 +17,24 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { createBashJobsExtension } from "../src/index.ts";
+import { isolateTestEnvironment } from "./helpers/environment.ts";
 
-test("override runs inside a real session and other extensions' bash hooks still apply", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "pi-bash-jobs-"));
-  process.env.XDG_STATE_HOME = join(dir, "state");
+test("override runs inside a real session and other extensions' bash hooks still apply", async (t) => {
+  const { cwd: dir, agentDir } = isolateTestEnvironment(t);
+  const configDir = join(agentDir, "extensions", "pi-bash-jobs");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(
+    join(configDir, "config.toml"),
+    stringify({
+      version: 1,
+      source_hooks: [
+        {
+          name: "session-env",
+          command: [process.execPath, "-e", "process.stdout.write('export SESSION_ENV=late')"],
+        },
+      ],
+    }),
+  );
   const faux = fauxProvider();
   const modelRuntime = await ModelRuntime.create({
     authPath: join(dir, "auth.json"),
@@ -31,7 +45,8 @@ test("override runs inside a real session and other extensions' bash hooks still
   const hookedInputs: string[] = [];
   const resourceLoader = new DefaultResourceLoader({
     cwd: dir,
-    agentDir: join(dir, "agent"),
+    agentDir,
+    settingsManager: SettingsManager.inMemory(),
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
@@ -56,7 +71,7 @@ test("override runs inside a real session and other extensions' bash hooks still
   await resourceLoader.reload();
   const { session } = await createAgentSession({
     cwd: dir,
-    agentDir: join(dir, "agent"),
+    agentDir,
     model: faux.getModel(),
     modelRuntime,
     resourceLoader,
@@ -64,7 +79,7 @@ test("override runs inside a real session and other extensions' bash hooks still
     settingsManager: SettingsManager.inMemory(),
   });
   faux.setResponses([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 1; echo late" }), {
+    fauxAssistantMessage(fauxToolCall("bash", { command: 'sleep 1; echo "$SESSION_ENV"' }), {
       stopReason: "toolUse",
     }),
     fauxAssistantMessage(fauxToolCall("bash_wait", { job_id: 1, seconds: 5 }), {
@@ -80,10 +95,11 @@ test("override runs inside a real session and other extensions' bash hooks still
     const texts = results.map((message) =>
       message.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
     );
-    assert.deepEqual(hookedInputs, ["sleep 1; echo late"]);
+    assert.deepEqual(hookedInputs, ['sleep 1; echo "$SESSION_ENV"']);
     assert.match(texts[0] ?? "", /^hooked\n[\s\S]*still running in the background as job_id 1/);
     assert.match(texts[1] ?? "", /^late\n[\s\S]*exited with code 0/);
   } finally {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
     session.dispose();
   }
 });

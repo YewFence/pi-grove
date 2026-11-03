@@ -29,6 +29,9 @@
     "typecheck": "aube exec tsc --noEmit",
     "test": "node --test test/"
   },
+  "dependencies": {
+    "smol-toml": "^1.9.1"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",

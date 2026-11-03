@@ -77,6 +77,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: '*'
         version: 1.5.0
+      smol-toml:
+        specifier: ^1.9.1
+        version: 1.9.1
       typebox:
         specifier: '*'
         version: 1.4.3
