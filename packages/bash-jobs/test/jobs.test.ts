@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { stringify } from "smol-toml";
-import { FIRST_HOOK_ERROR_NOTICE, FIRST_HOOK_WARNING_NOTICE } from "../src/envelope.ts";
+import {
+  DEBUG_SKILL_PATH,
+  FIRST_HOOK_ERROR_NOTICE,
+  FIRST_HOOK_WARNING_NOTICE,
+} from "../src/envelope.ts";
 import { type BashJobsOptions, createBashJobsExtension, programName } from "../src/index.ts";
 import { isolateTestEnvironment } from "./helpers/environment.ts";
 
@@ -242,6 +246,7 @@ test("configured hook failure skips partial output and still runs bash", async (
   );
   const first = await call("bash", { command: "echo survived" });
   assert.ok(text(first).includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.ok(text(first).includes(DEBUG_SKILL_PATH));
   assert.match(text(first), /<pi-bash-jobs action="source-hook" hook="broken" outcome="failed">/);
   assert.ok(text(first).endsWith("survived\n"));
   assert.doesNotMatch(text(first), /exit 9/);
@@ -249,6 +254,7 @@ test("configured hook failure skips partial output and still runs bash", async (
   const next = text(await call("bash", { command: "echo next" }));
   assert.match(next, /exited with code 1/);
   assert.equal(next.includes(FIRST_HOOK_ERROR_NOTICE), false);
+  assert.equal(next.includes(DEBUG_SKILL_PATH), false);
 });
 
 test("quiet failures preserve notifications and the first visible error explains itself", async (t) => {
@@ -307,6 +313,7 @@ test("successful stderr warnings preserve initialization and do not consume the 
   const first = text(await call("bash", { command: 'printf "%s" "$WARNING_ENV"' }));
   assert.match(first, /outcome="warning"/);
   assert.ok(first.includes(FIRST_HOOK_WARNING_NOTICE));
+  assert.equal(first.includes(DEBUG_SKILL_PATH), false);
   assert.ok(first.endsWith("applied"));
   assert.equal(first.includes(FIRST_HOOK_ERROR_NOTICE), false);
   const second = text(await call("bash", { command: "true" }));
@@ -317,8 +324,30 @@ test("successful stderr warnings preserve initialization and do not consume the 
   writeFileSync(script, "console.error('new failure'); process.exit(1)");
   const failure = text(await call("bash", { command: "echo survived" }));
   assert.ok(failure.includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.ok(failure.includes(DEBUG_SKILL_PATH));
   assert.match(failure, /outcome="failed"/);
   assert.ok(failure.endsWith("survived\n"));
+});
+
+test("config diagnostics do not consume the first hook failure skill hint", async (t) => {
+  const { call, agentDir } = load(t);
+  const directory = join(agentDir, "extensions", "pi-bash-jobs");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, "config.toml"),
+    stringify({
+      version: 1,
+      source_hooks: [
+        { name: "invalid", command: "bad" },
+        { name: "broken", command: [process.execPath, "-e", "process.exit(1)"] },
+      ],
+    }),
+  );
+  const first = text(await call("bash", { command: "echo done" }));
+  assert.match(first, /action="config"/);
+  assert.ok(first.includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.ok(first.includes(DEBUG_SKILL_PATH));
+  assert.equal(text(await call("bash", { command: "true" })).includes(DEBUG_SKILL_PATH), false);
 });
 
 test("hook envelopes survive command truncation, backgrounding and command failure", async (t) => {
@@ -376,6 +405,7 @@ test("errors from hooks that finish after backgrounding reach bash_wait", async 
   assert.doesNotMatch(text(first), /<pi-bash-jobs/);
   const done = text(await call("bash_wait", { job_id: first.details?.jobId, seconds: 1 }));
   assert.ok(done.includes(FIRST_HOOK_ERROR_NOTICE));
+  assert.ok(done.includes(DEBUG_SKILL_PATH));
   assert.match(done, /late error/);
   assert.match(done, /done/);
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { packages, root, run } from "./packages.mjs";
 
@@ -27,6 +28,25 @@ for (const pkg of selected) {
   assert.equal(manifest.version, pkg.manifest.version);
   const files = new Set(packed.files.map((file) => file.path));
   assert.ok(files.has("LICENSE"), `${pkg.slug} must ship its license`);
+  if (pkg.slug === "bash-jobs") {
+    const skillPath = "resources/bash-jobs-debug/SKILL.md";
+    assert.ok(files.has(skillPath), "bash-jobs must ship its on-demand debug skill");
+    assert.equal(
+      manifest.pi.skills,
+      undefined,
+      "bash-jobs debug skill must stay out of the skill catalog",
+    );
+    const envelope = await import(pathToFileURL(join(unpacked, "src/envelope.ts")).href);
+    assert.equal(envelope.DEBUG_SKILL_PATH, join(unpacked, skillPath));
+    assert.ok(
+      readFileSync(envelope.DEBUG_SKILL_PATH, "utf8").includes(envelope.DEBUG_SKILL_DESCRIPTION),
+    );
+    assert.ok(
+      envelope
+        .formatDiagnostic({ action: "source-hook", message: "failed" }, true)
+        .includes(envelope.DEBUG_SKILL_PATH),
+    );
+  }
   for (const resource of manifest.pi.extensions ?? []) {
     assert.ok(files.has(resource.replace(/^\.\//, "")), `${pkg.slug} does not ship ${resource}`);
   }

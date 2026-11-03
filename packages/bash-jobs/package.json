@@ -17,6 +17,7 @@
   },
   "files": [
     "src",
+    "resources/bash-jobs-debug",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"

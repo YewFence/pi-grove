@@ -1,3 +1,11 @@
+import { fileURLToPath } from "node:url";
+
+export const DEBUG_SKILL_PATH = fileURLToPath(
+  new URL("../resources/bash-jobs-debug/SKILL.md", import.meta.url),
+);
+export const DEBUG_SKILL_DESCRIPTION =
+  "If hook stderr gives a clear fix, apply it directly. Read this skill only if the fix fails or the cause remains unclear, to understand bash-jobs environment hooks and diagnose persistent failures.";
+
 export interface HookDiagnostic {
   action: "source-hook" | "config";
   outcome?: "failed" | "warning";
@@ -41,7 +49,11 @@ export function formatDiagnostic(diagnostic: HookDiagnostic, explain: boolean): 
     : "";
   const stderrOpen = diagnostic.stderr ? '\n\n<command-output stream="stderr">\n' : "";
   const stderrClose = diagnostic.stderr ? "\n</command-output>" : "";
-  const close = "\n\n</pi-bash-jobs>";
+  const guidance =
+    explain && diagnostic.action === "source-hook" && diagnostic.outcome !== "warning"
+      ? `\n\nSkill: ${escapeBody(DEBUG_SKILL_PATH)}. Description: ${DEBUG_SKILL_DESCRIPTION}`
+      : "";
+  const close = `${guidance}\n\n</pi-bash-jobs>`;
   const prefix = `${open}\n${notice}`;
   const budget =
     MAX_ENVELOPE_CHARS - prefix.length - stderrOpen.length - stderrClose.length - close.length;

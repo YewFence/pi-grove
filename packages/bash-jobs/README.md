@@ -97,6 +97,8 @@ hook 非零退出、命令缺失、超时或 stdout 超过 1 MiB 时,该 hook �
 
 > pi-bash-jobs: an environment preparation hook succeeded and wrote to stderr. Its generated initialization code will run before the requested command. The following block contains the hook’s stderr output.
 
+每个 session 首次非静默 hook 失败时,还会附带调试 skill 的绝对路径与描述:stderr 已给出明确修复方式时直接处理,修复无效或原因不明时再读取 skill。skill 位于包内 `resources/bash-jobs-debug/SKILL.md`,随包发布但不注册到日常技能列表;成功、warning 和静默失败均不提供该入口。配置错误不会消耗首次 hook 失败的说明或 skill 入口机会。
+
 每个 session 的首次 warning 和首次 failure 分别附带说明;后续同类诊断保留 envelope 和具体内容,省略重复解释。warning 不会消耗首次错误说明机会。静默错误不会消耗首次说明机会。配置错误使用 `action="config"` 的 envelope,在下一次 bash 调用时报告一次并使用对应的配置错误说明。无效配置条目会给出文件和条目位置并跳过,其他有效条目继续使用;整个 TOML 无法解析或版本不支持时不加载其中的 hook。
 
 取消调用会终止当前命令 hook 及其子进程,不再执行后续 hook 或实际 bash 命令。初始化代码在 `set -e` 下运行;代码语法错误或返回失败时,实际命令不会执行,错误会作为 bash 工具结果返回。source hook 的生成失败和生成代码的执行失败是两个不同阶段。

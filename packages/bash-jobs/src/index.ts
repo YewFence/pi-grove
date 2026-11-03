@@ -546,7 +546,7 @@ export function createBashJobsExtension(options: BashJobsOptions = {}) {
     const diagnosticParts = (diagnostics: HookDiagnostic[], consume = true) => {
       const explained = new Set(explainedDiagnostics);
       const parts = diagnostics.map((diagnostic) => {
-        const key = `${sessionId}:${diagnostic.outcome ?? "failed"}`;
+        const key = `${sessionId}:${diagnostic.action}:${diagnostic.outcome ?? "failed"}`;
         const text = formatDiagnostic(diagnostic, !explained.has(key));
         explained.add(key);
         return { type: "text" as const, text: `${text}\n\n` };
