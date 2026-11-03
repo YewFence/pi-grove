@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { stripVTControlCharacters } from "node:util";
@@ -23,6 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
 import { createBashJobsExtension, type JobTiming } from "../src/index.ts";
+import { isolateTestEnvironment } from "./helpers/environment.ts";
 
 async function createRenderingSession(
   t: TestContext,
@@ -30,14 +29,8 @@ async function createRenderingSession(
   onUpdate?: (component: ToolExecutionComponent) => void,
   timing?: JobTiming,
 ) {
+  const { cwd: dir, agentDir } = isolateTestEnvironment(t);
   initTheme("dark");
-  const dir = mkdtempSync(join(tmpdir(), "pi-bash-jobs-render-"));
-  const savedXdg = process.env.XDG_STATE_HOME;
-  process.env.XDG_STATE_HOME = join(dir, "state");
-  t.after(() => {
-    if (savedXdg === undefined) delete process.env.XDG_STATE_HOME;
-    else process.env.XDG_STATE_HOME = savedXdg;
-  });
   const faux = fauxProvider();
   const modelRuntime = await ModelRuntime.create({
     authPath: join(dir, "auth.json"),
@@ -47,7 +40,8 @@ async function createRenderingSession(
   modelRuntime.registerNativeProvider(faux.provider);
   const resourceLoader = new DefaultResourceLoader({
     cwd: dir,
-    agentDir: join(dir, "agent"),
+    agentDir,
+    settingsManager: SettingsManager.inMemory(),
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
@@ -66,7 +60,7 @@ async function createRenderingSession(
   await resourceLoader.reload();
   const { session } = await createAgentSession({
     cwd: dir,
-    agentDir: join(dir, "agent"),
+    agentDir,
     model: faux.getModel(),
     modelRuntime,
     resourceLoader,

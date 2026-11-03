@@ -48,20 +48,34 @@ for (const pkg of selected) {
     mkdirSync(dirname(target), { recursive: true });
     symlinkSync(realpathSync(resolve(root, pkg.path, "node_modules", dependency)), target, "dir");
   }
-  const loader = new DefaultResourceLoader({
-    cwd: temporary,
-    agentDir: join(temporary, "agent"),
-    settingsManager: SettingsManager.inMemory(),
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    additionalExtensionPaths: manifest.pi.extensions.map((path) => resolve(unpacked, path)),
-  });
-  await loader.reload();
-  const extensions = loader.getExtensions();
-  assert.deepEqual(extensions.errors, [], `${pkg.slug} failed to load its packed extension`);
-  assert.equal(extensions.extensions.length, manifest.pi.extensions.length);
+  const overrides = {
+    PI_CODING_AGENT_DIR: join(temporary, "agent"),
+    PI_CODING_AGENT_SESSION_DIR: join(temporary, "sessions"),
+    XDG_STATE_HOME: join(temporary, "state"),
+  };
+  const previous = new Map(Object.keys(overrides).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, overrides);
+  try {
+    const loader = new DefaultResourceLoader({
+      cwd: temporary,
+      agentDir: overrides.PI_CODING_AGENT_DIR,
+      settingsManager: SettingsManager.inMemory(),
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      additionalExtensionPaths: manifest.pi.extensions.map((path) => resolve(unpacked, path)),
+    });
+    await loader.reload();
+    const extensions = loader.getExtensions();
+    assert.deepEqual(extensions.errors, [], `${pkg.slug} failed to load its packed extension`);
+    assert.equal(extensions.extensions.length, manifest.pi.extensions.length);
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
   console.log(`${manifest.name}@${manifest.version}: tarball and pi loader verified`);
 }
