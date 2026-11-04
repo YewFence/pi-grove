@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { stringify } from "smol-toml";
 import {
@@ -34,7 +34,7 @@ function load(t: TestContext, options: BashJobsOptions = {}) {
     ...options,
   })(pi);
   const shutdown = () => handlers.get("session_shutdown")?.();
-  t.after(shutdown);
+  t.onTestFinished(shutdown);
   const notifications: Array<{ message: string; type: string }> = [];
   const ctx = {
     cwd,

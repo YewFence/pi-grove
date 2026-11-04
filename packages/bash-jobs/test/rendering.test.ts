@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { test, vi, type TestContext } from "vitest";
 import { stripVTControlCharacters } from "node:util";
 import {
   fauxAssistantMessage,
@@ -67,7 +67,7 @@ async function createRenderingSession(
     sessionManager: SessionManager.inMemory(dir),
     settingsManager: SettingsManager.inMemory(),
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
     session.dispose();
   });
@@ -105,7 +105,7 @@ const render = (component: ToolExecutionComponent) =>
 
 test("bash duration excludes approval waiting even when the command produces no output", async (t) => {
   let now = 0;
-  t.mock.method(Date, "now", () => now);
+  vi.spyOn(Date, "now").mockImplementation(() => now);
   let firstUpdate = true;
   let running = "";
   const { session, faux, components } = await createRenderingSession(
@@ -140,7 +140,7 @@ test("bash duration excludes approval waiting even when the command produces no 
 
 test("denied bash calls do not display an execution duration", async (t) => {
   let now = 0;
-  t.mock.method(Date, "now", () => now);
+  vi.spyOn(Date, "now").mockImplementation(() => now);
   const { session, faux, components } = await createRenderingSession(t, async () => {
     await Promise.resolve();
     now += 10_000;
@@ -160,7 +160,7 @@ test("denied bash calls do not display an execution duration", async (t) => {
 
 test("failed and subsequent bash calls retain builtin output rendering and independent durations", async (t) => {
   let now = 0;
-  t.mock.method(Date, "now", () => now);
+  vi.spyOn(Date, "now").mockImplementation(() => now);
   const started = new Set<ToolExecutionComponent>();
   const { session, faux, components } = await createRenderingSession(
     t,
@@ -199,7 +199,7 @@ test("failed and subsequent bash calls retain builtin output rendering and indep
 
 test("backgrounding freezes the foreground duration and preserves the job result", async (t) => {
   let now = 0;
-  t.mock.method(Date, "now", () => now);
+  vi.spyOn(Date, "now").mockImplementation(() => now);
   let firstUpdate = true;
   const { session, faux, components } = await createRenderingSession(
     t,

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test } from "vitest";
 import { fingerprint, plan, prepare, validate } from "../scripts/release.mjs";
 import { packageBySlug, root } from "../scripts/packages.mjs";
 

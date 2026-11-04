@@ -27,7 +27,7 @@
   },
   "scripts": {
     "typecheck": "aube exec tsc --noEmit",
-    "test": "node --test test/"
+    "test": "aube exec vitest run"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

@@ -1,6 +1,6 @@
 # Development and releases
 
-Use mise and aube throughout the workspace. Run `mise trust`, `mise install`, and `mise run deps:install`, then `mise run check`. `mise run fix` formats code and applies lint fixes. Tests retain their original runners, and every package has a typecheck task.
+Use mise and aube throughout the workspace. Run `mise trust`, `mise install`, and `mise run deps:install`, then `mise run check`. `mise run fix` formats code and applies lint fixes. All tests use Vitest, and every package has test and typecheck tasks. Package-local Vitest configurations keep each extension's tests independent; the root configuration runs release automation tests.
 
 ## Independent packages
 

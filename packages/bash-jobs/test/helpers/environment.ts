@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TestContext } from "node:test";
+import type { TestContext } from "vitest";
 
 /** Isolates pi settings, sessions and telemetry for a test and restores the caller's environment. */
 export function isolateTestEnvironment(t: TestContext) {
@@ -21,7 +21,7 @@ export function isolateTestEnvironment(t: TestContext) {
   for (const [key, value] of Object.entries(overrides)) {
     const previous = process.env[key];
     process.env[key] = value;
-    t.after(() => {
+    t.onTestFinished(() => {
       if (previous === undefined) delete process.env[key];
       else process.env[key] = previous;
     });

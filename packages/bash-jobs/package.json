@@ -28,7 +28,7 @@
   },
   "scripts": {
     "typecheck": "aube exec tsc --noEmit",
-    "test": "node --test test/"
+    "test": "aube exec vitest run"
   },
   "dependencies": {
     "smol-toml": "^1.9.1"

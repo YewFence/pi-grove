@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -53,7 +53,7 @@ for (const scenario of [
       const dir = mkdtempSync(join(tmpdir(), "pi-edit-diagnostics-"));
       const previousStateHome = process.env.XDG_STATE_HOME;
       process.env.XDG_STATE_HOME = join(dir, "state");
-      t.after(() => {
+      t.onTestFinished(() => {
         if (previousStateHome === undefined) delete process.env.XDG_STATE_HOME;
         else process.env.XDG_STATE_HOME = previousStateHome;
       });
@@ -190,7 +190,7 @@ test(
     const stateHome = join(dir, "state");
     const previousStateHome = process.env.XDG_STATE_HOME;
     process.env.XDG_STATE_HOME = stateHome;
-    t.after(() => {
+    t.onTestFinished(() => {
       if (previousStateHome === undefined) delete process.env.XDG_STATE_HOME;
       else process.env.XDG_STATE_HOME = previousStateHome;
     });
