@@ -1,0 +1,46 @@
+{
+  "name": "pi-usage",
+  "version": "0.1.0",
+  "description": "Coding-time observability for the pi coding agent: attributes effective work time to files, languages and projects, and exports it as standard OTLP trace spans to your own observability stack",
+  "keywords": [
+    "opentelemetry",
+    "pi-package",
+    "wakatime"
+  ],
+  "homepage": "https://github.com/YewFence/pi-grove/tree/main/packages/usage#readme",
+  "bugs": {
+    "url": "https://github.com/YewFence/pi-grove/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YewFence/pi-grove.git",
+    "directory": "packages/usage"
+  },
+  "files": [
+    "src",
+    "examples",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "aube exec tsc --noEmit",
+    "test": "aube exec vitest run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

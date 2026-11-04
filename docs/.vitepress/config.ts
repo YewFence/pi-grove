@@ -6,13 +6,18 @@ const cuesAdrs = readdirSync(new URL("../pi-cues/adrs/", import.meta.url))
   .sort()
   .map((file) => ({ text: file.replace(/\.md$/, "").replaceAll("-", " "), link: `/pi-cues/adrs/${file.replace(/\.md$/, "")}` }));
 
+const usageDocs = [
+  { text: "design", link: "/pi-usage/design" },
+  { text: "wakatime design", link: "/pi-usage/wakatime-design" },
+];
+
 export default defineConfig({
   base: "/pi-grove/",
   title: "pi-grove",
   description: "Independent extensions for the pi coding agent",
   themeConfig: {
     nav: [{ text: "Extensions", link: "/" }, { text: "Development", link: "/development" }, { text: "GitHub", link: "https://github.com/YewFence/pi-grove" }],
-    sidebar: [{ text: "pi-grove", items: [{ text: "Overview", link: "/" }, { text: "Development and releases", link: "/development" }, { text: "Monorepo decisions", link: "/adrs/0001-independent-packages" }] }, { text: "pi-cues decisions", items: cuesAdrs }],
+    sidebar: [{ text: "pi-grove", items: [{ text: "Overview", link: "/" }, { text: "Development and releases", link: "/development" }, { text: "Monorepo decisions", link: "/adrs/0001-independent-packages" }] }, { text: "pi-cues decisions", items: cuesAdrs }, { text: "pi-usage", items: usageDocs }],
     search: { provider: "local" },
   },
 });

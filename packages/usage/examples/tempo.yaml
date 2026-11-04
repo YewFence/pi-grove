@@ -1,0 +1,57 @@
+# Example Tempo configuration for pi-usage.
+# The load-bearing part is the metrics-generator: it turns pi.segment spans
+# into Prometheus metrics with the coding.* attributes as labels.
+# Everything else is a minimal single-binary Tempo — adapt to your stack.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 720h # 30 days of trace retention; adjust freely
+
+metrics_generator:
+  processor:
+    span_metrics:
+      # Span attributes promoted to Prometheus labels. Keep this list short:
+      # every entry multiplies series cardinality. coding.entity (file paths)
+      # deliberately stays out — query it with TraceQL instead.
+      dimensions:
+        - coding.language
+        - coding.project
+        - coding.segment.kind
+  registry:
+    external_labels:
+      source: pi-usage
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://localhost:9090/api/v1/write # your Prometheus
+  # pi-usage settles segments seconds after their real end time and sends them
+  # with true timestamps. The default 30s ingestion slack tolerates this; raise
+  # it if you also replay old spans after long downtime.
+  # ingestion_time_range_slack: 2m
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [span-metrics]

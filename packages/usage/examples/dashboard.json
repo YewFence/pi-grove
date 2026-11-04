@@ -1,0 +1,131 @@
+{
+  "title": "Pi Usage — Coding Insights",
+  "description": "WakaTime-style coding observability from pi-usage spans (via Tempo spanmetrics). Metric names assume Tempo's metrics-generator; with the OTel Collector spanmetrics connector use duration_sum instead of traces_spanmetrics_latency_sum.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "links": [],
+  "tags": ["pi-usage"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Effective Work",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "h", "decimals": 1 },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(traces_spanmetrics_latency_sum{service_name=\"pi-usage\", coding_segment_kind=~\".+\"}[$__range])) / 3600"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "piechart",
+      "title": "Languages (file-attributed time)",
+      "gridPos": { "h": 12, "w": 9, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "h" },
+        "overrides": []
+      },
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": ["value", "percent"]
+        },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "tooltip": { "mode": "single", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (coding_language) (increase(traces_spanmetrics_latency_sum{service_name=\"pi-usage\", coding_segment_kind=\"file\"}[$__range])) / 3600",
+          "legendFormat": "{{coding_language}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "Projects",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "h" },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (coding_project) (increase(traces_spanmetrics_latency_sum{service_name=\"pi-usage\", coding_segment_kind=~\".+\"}[$__range])) / 3600",
+          "legendFormat": "{{coding_project}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Effective work per day (file vs app)",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "stacking": { "mode": "normal", "group": "A" },
+            "lineWidth": 0,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": ["sum"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (coding_segment_kind) (increase(traces_spanmetrics_latency_sum{service_name=\"pi-usage\", coding_segment_kind=~\".+\"}[1d])) / 3600",
+          "legendFormat": "{{coding_segment_kind}}",
+          "interval": "1d"
+        }
+      ]
+    }
+  ]
+}
