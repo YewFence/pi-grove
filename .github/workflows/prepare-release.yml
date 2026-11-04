@@ -11,10 +11,7 @@ on:
         default: all
         type: string
 
-permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+permissions: {}
 
 concurrency:
   group: prepare-release
@@ -23,6 +20,11 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     env:
       MISE_LOCKED: "1"
       MISE_TASK_RUN_AUTO_INSTALL: "false"

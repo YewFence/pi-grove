@@ -20,5 +20,9 @@
     "typebox": "1.4.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.4"
+  },
+  "overrides": {
+    "glob>minimatch": "11.0.4",
+    "ts-json-schema-generator>glob": "14.0.3"
   }
 }

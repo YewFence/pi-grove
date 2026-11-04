@@ -381,7 +381,7 @@ describe("Dialog overflow — indicator content", () => {
     const lines = dlg.render(80);
     expect(lines.length).toBeLessThanOrEqual(8);
     // Middle row at index topFixed=4 carries the combined glyph.
-    expect(stripAnsi(lines[4])).toBe("↕");
+    expect(stripAnsi(lines[4]!)).toBe("↕");
     // And no separate ↑/↓ leak through.
     expect(lines.some((l) => stripAnsi(l) === "↑")).toBe(false);
     expect(lines.some((l) => stripAnsi(l) === "↓")).toBe(false);
@@ -405,8 +405,8 @@ describe("Dialog overflow — indicator content", () => {
     expect(lines.length).toBeLessThanOrEqual(14);
     // Top of middle region (index 4) is ↑, bottom (index 10 = 4+7-1) is ↓. At termRows=14
     // with bottomFixed=3 (footerRowCount 4→2), availableMiddle = 14 - 4 - 3 = 7.
-    expect(stripAnsi(lines[4])).toBe("↑");
-    expect(stripAnsi(lines[10])).toBe("↓");
+    expect(stripAnsi(lines[4]!)).toBe("↑");
+    expect(stripAnsi(lines[10]!)).toBe("↓");
     // No combined glyph when there's room for two separate indicators.
     expect(lines.some((l) => stripAnsi(l) === "↕")).toBe(false);
   });
@@ -525,7 +525,7 @@ describe("Dialog overflow — notes open on a multi-select tab (NFR-2)", () => {
     // residual-spacer tail is identical with notes closed vs open.
     const trailingBlanks = (lines: string[]) => {
       let n = 0;
-      for (let i = lines.length - 1; i >= 0 && lines[i].trim() === ""; i--) n++;
+      for (let i = lines.length - 1; i >= 0 && lines[i]!.trim() === ""; i--) n++;
       return n;
     };
     expect(trailingBlanks(openLines)).toBe(trailingBlanks(closedLines));
@@ -612,7 +612,7 @@ describe("Dialog overflow — notes open on the Submit tab (NFR-2)", () => {
     // blank tail is identical with the editor closed vs open (footer stays 5 rows).
     const trailingBlanks = (lines: string[]) => {
       let n = 0;
-      for (let i = lines.length - 1; i >= 0 && lines[i].trim() === ""; i--) n++;
+      for (let i = lines.length - 1; i >= 0 && lines[i]!.trim() === ""; i--) n++;
       return n;
     };
     expect(trailingBlanks(openLines)).toBe(trailingBlanks(closedLines));

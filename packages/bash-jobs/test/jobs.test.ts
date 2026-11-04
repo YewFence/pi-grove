@@ -544,7 +544,7 @@ test("session shutdown records job_end exactly once for running jobs", async (t)
     (event) => event.jobId === jobId && event.event === "job_end",
   );
   assert.equal(ends.length, 1);
-  assert.equal(ends[0].state, "killed");
+  assert.equal(ends[0]!.state, "killed");
   // The settled promise firing after shutdown must not record a second job_end.
   await new Promise((resolve) => setTimeout(resolve, 500));
   const after = events(eventsPath).filter(

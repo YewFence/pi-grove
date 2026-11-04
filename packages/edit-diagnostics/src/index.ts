@@ -21,7 +21,7 @@ function whitespaceCandidate(content: string, oldText: string) {
   const offsets: number[] = [];
   const characters: string[] = [];
   for (let index = 0; index < content.length; index++) {
-    const character = content[index];
+    const character = content.charAt(index);
     if (!/\s/u.test(character)) {
       characters.push(character);
       offsets.push(index);
@@ -31,14 +31,14 @@ function whitespaceCandidate(content: string, oldText: string) {
   const matchIndex = compactContent.indexOf(needle);
   if (matchIndex === -1 || compactContent.indexOf(needle, matchIndex + 1) !== -1) return undefined;
 
-  let start = offsets[matchIndex];
-  let end = offsets[matchIndex + needle.length - 1] + 1;
+  let start = offsets[matchIndex]!;
+  let end = offsets[matchIndex + needle.length - 1]! + 1;
   if (/^[\t ]/u.test(oldText)) {
     const lineStart = content.lastIndexOf("\n", start - 1) + 1;
     if (!content.slice(lineStart, start).trim()) start = lineStart;
   }
   if (/\s$/u.test(oldText)) {
-    while (end < content.length && /[^\S\n]/u.test(content[end])) end++;
+    while (end < content.length && /[^\S\n]/u.test(content.charAt(end))) end++;
     if (oldText.endsWith("\n") && content[end] === "\n") end++;
   }
 
@@ -187,7 +187,7 @@ function explainNotFound(
         })();
   if (editIndex === -1) return error;
 
-  const oldText = normalizeLineEndings(input.edits[editIndex].oldText);
+  const oldText = normalizeLineEndings(input.edits[editIndex]!.oldText);
   const content = normalizeLineEndings(snapshot.replace(/^\uFEFF/u, ""));
   const candidate = whitespaceCandidate(content, oldText);
   const lines = [

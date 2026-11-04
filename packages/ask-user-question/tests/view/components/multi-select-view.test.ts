@@ -51,7 +51,7 @@ describe("MultiSelectView.render", () => {
     const m = makeView(q, makeProps(q));
     const lines = m.render(80);
     // Strip any ANSI escapes from line 0 to match raw glyph positioning.
-    const raw = lines[0].replace(/\x1b\[[0-9;]*m/g, "");
+    const raw = lines[0]!.replace(/\x1b\[[0-9;]*m/g, "");
     // Active row 0 = `❯ 1. [ ] FE` (pointer 2 + "1." 2 + space 1 + "[ ]" 3 + space 1 + label).
     expect(raw).toMatch(/\[[ ✔]\] FE/);
   });
@@ -65,7 +65,7 @@ describe("MultiSelectView.render", () => {
 
     const focused = m.render(80);
     const rawFocused = focused.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
-    expect(rawFocused[1].startsWith("❯ ")).toBe(true); // active pointer on selected row
+    expect(rawFocused[1]!.startsWith("❯ ")).toBe(true); // active pointer on selected row
 
     m.setProps(makeProps(q, { optionIndex: 1, focused: false }));
     const blurred = m.render(80);
@@ -76,7 +76,7 @@ describe("MultiSelectView.render", () => {
     m.setProps(makeProps(q, { optionIndex: 1, focused: true }));
     const refocused = m.render(80);
     const rawRefocused = refocused.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
-    expect(rawRefocused[1].startsWith("❯ ")).toBe(true);
+    expect(rawRefocused[1]!.startsWith("❯ ")).toBe(true);
   });
 
   it("renders description on continuation line when present", () => {
@@ -98,7 +98,7 @@ describe("MultiSelectView.render", () => {
     const m = makeView(q, makeProps(q, { optionIndex: 1 }));
     const lines = m.render(80);
     expect(lines[1]).toContain("❯ "); // ACTIVE_POINTER on the active row
-    expect(lines[0].startsWith("❯ ")).toBe(false); // inactive rows do not start with active pointer
+    expect(lines[0]!.startsWith("❯ ")).toBe(false); // inactive rows do not start with active pointer
   });
 
   it("checked options render [✔]; unchecked render [ ]", () => {
@@ -114,14 +114,14 @@ describe("MultiSelectView.render", () => {
     // optionIndex = 1 → row 0 is inactive; checkbox 0 unchecked.
     const q = question();
     const m = makeView(q, makeProps(q, { optionIndex: 1 }));
-    const raw = m.render(80)[0].replace(/\x1b\[[0-9;]*m/g, "");
+    const raw = m.render(80)[0]!.replace(/\x1b\[[0-9;]*m/g, "");
     expect(raw).toMatch(/^ {2}1\. \[ \] FE/);
   });
 
   it("row 2 active checked renders as '❯ 2. [✔] LABEL'", () => {
     const q = question();
     const m = makeView(q, makeProps(q, { optionIndex: 1, checkedIndices: new Set([1]) }));
-    const raw = m.render(80)[1].replace(/\x1b\[[0-9;]*m/g, "");
+    const raw = m.render(80)[1]!.replace(/\x1b\[[0-9;]*m/g, "");
     expect(raw).toMatch(/^❯ 2\. \[✔\] BE/);
   });
 
@@ -141,7 +141,7 @@ describe("MultiSelectView.render", () => {
     // Line 0 = row, lines 1..N = wrapped description segments. Each continuation must start
     // with EXACTLY 2 spaces (col 2 = past pointer slot), not 9 (full prefix column).
     for (let i = 1; i < lines.length - 1; i++) {
-      const raw = lines[i].replace(/\x1b\[[0-9;]*m/g, "");
+      const raw = lines[i]!.replace(/\x1b\[[0-9;]*m/g, "");
       expect(raw.startsWith("  ")).toBe(true);
       expect(raw.startsWith("   ")).toBe(false);
     }
@@ -153,7 +153,7 @@ describe("MultiSelectView.render", () => {
     expect(m.render(80)[0]).toContain("❯ ");
     m.setProps(makeProps(q, { optionIndex: 2 }));
     const lines = m.render(80);
-    expect(lines[0].startsWith("❯ ")).toBe(false);
+    expect(lines[0]!.startsWith("❯ ")).toBe(false);
     expect(lines[2]).toContain("❯ ");
   });
 });
@@ -369,7 +369,7 @@ describe("MultiSelectView — 'Type something.' row", () => {
     const m = makeView(q, otherInactive(q));
     const lines = m.render(80);
     // 3 options → other is row index 3, numbered "4.".
-    const raw = lines[3].replace(/\x1b\[[0-9;]*m/g, "");
+    const raw = lines[3]!.replace(/\x1b\[[0-9;]*m/g, "");
     expect(raw).toMatch(/^ {2}4\. \[ \] Type something\./);
     expect(lines[3]).not.toContain("[✔]");
   });
@@ -474,7 +474,7 @@ describe("MultiSelectView — 'Type something.' row", () => {
     });
     const m = makeView(q, makeProps(q));
     const lines = m.render(80);
-    const raw = lines[9].replace(/\x1b\[[0-9;]*m/g, ""); // other row
+    const raw = lines[9]!.replace(/\x1b\[[0-9;]*m/g, ""); // other row
     expect(raw).toMatch(/10\. \[ \] Type something\./);
   });
 });

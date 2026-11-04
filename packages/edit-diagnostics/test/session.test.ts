@@ -129,8 +129,8 @@ for (const scenario of [
         (context) => {
           const results = context.messages.filter((message) => message.role === "toolResult");
           assert.equal(results.length, 1);
-          assert.equal(results[0].isError, true);
-          const text = results[0].content
+          assert.equal(results[0]!.isError, true);
+          const text = results[0]!.content
             .map((part) => (part.type === "text" ? part.text : ""))
             .join("");
           for (const pattern of scenario.expected) assert.match(text, pattern);
@@ -144,7 +144,7 @@ for (const scenario of [
         await session.prompt("fix it");
         assert.equal(readFileSync(filePath, "utf8"), scenario.original);
         await Promise.all(previews.values());
-        const component = [...components.values()][0];
+        const component = [...components.values()][0]!;
         for (const width of [160, 80, 40]) {
           const lines = component.render(width);
           const rendered = stripVTControlCharacters(lines.join("\n"));
@@ -278,11 +278,11 @@ test(
           { phase: "follow_up_result", toolName: "read", isError: false, step: 5 },
         ],
       );
-      assert.equal(events[0].diagnostic, true);
-      assert.equal(events[3].diagnostic, true);
+      assert.equal(events[0]!.diagnostic, true);
+      assert.equal(events[3]!.diagnostic, true);
       for (const event of events.slice(1, 4))
-        assert.equal(event.triggerCallId, events[0].toolCallId);
-      for (const event of events.slice(4)) assert.equal(event.triggerCallId, events[3].toolCallId);
+        assert.equal(event.triggerCallId, events[0]!.toolCallId);
+      for (const event of events.slice(4)) assert.equal(event.triggerCallId, events[3]!.toolCallId);
       assert.equal(new Set(events.map((event) => event.toolCallId)).size, events.length);
       assert.ok(
         events.every(

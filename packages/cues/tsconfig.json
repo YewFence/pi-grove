@@ -3,10 +3,7 @@
     "types": [
       "node",
       "vitest/globals"
-    ],
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "isolatedModules": true
+    ]
   },
   "include": [
     "src",

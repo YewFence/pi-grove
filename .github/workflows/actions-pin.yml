@@ -1,0 +1,35 @@
+name: Action Pinning
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actions-pin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actions-pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MISE_LOCKED: "1"
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          install_args: pinact
+          add_shims_to_path: true
+      - run: mise run actions:pin:check
+        env:
+          PINACT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

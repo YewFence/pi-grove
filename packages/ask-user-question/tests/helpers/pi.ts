@@ -162,7 +162,7 @@ export function createMockSessionManager(branch: SessionEntry[] = [], sessionId 
   return {
     getBranch: vi.fn(() => branch),
     getEntries: vi.fn(() => branch),
-    getLeafId: vi.fn(() => (branch.length ? branch[branch.length - 1].id : null)),
+    getLeafId: vi.fn(() => (branch.length ? branch[branch.length - 1]!.id : null)),
     getSessionFile: vi.fn(() => "/tmp/test-session.jsonl"),
     getSessionId: vi.fn(() => sessionId),
   };

@@ -208,8 +208,7 @@ export class SubmitTabStrategy implements TabContentStrategy {
 
   bodyComponent(state: DialogState): Component {
     const c = new Container();
-    for (let i = 0; i < this.config.questions.length; i++) {
-      const q = this.config.questions[i];
+    for (const [i, q] of this.config.questions.entries()) {
       const a = state.answers.get(i);
       if (!a) continue;
       const label = q.header && q.header.length > 0 ? q.header : `Q${i + 1}`;
@@ -264,8 +263,7 @@ export class SubmitTabStrategy implements TabContentStrategy {
 
   footerRows(state: DialogState): Component[] {
     const missing: string[] = [];
-    for (let i = 0; i < this.config.questions.length; i++) {
-      const q = this.config.questions[i];
+    for (const [i, q] of this.config.questions.entries()) {
       if (!state.answers.has(i)) {
         missing.push(q.header && q.header.length > 0 ? q.header : `Q${i + 1}`);
       }

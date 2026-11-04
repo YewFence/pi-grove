@@ -67,8 +67,8 @@ describe("normalizeQuestionParams", () => {
     const out = normalizeQuestionParams({
       questions: [{ question: "Q?", header: "H", options: [{ label: "A", description: "a" }] }],
     });
-    expect("multiSelect" in out.questions[0]).toBe(false);
-    expect("preview" in out.questions[0].options[0]).toBe(false);
+    expect("multiSelect" in out.questions[0]!).toBe(false);
+    expect("preview" in out.questions[0]!.options[0]!).toBe(false);
   });
 
   it("tolerates non-string values in string slots (malformed params reach the validator, not a throw)", () => {

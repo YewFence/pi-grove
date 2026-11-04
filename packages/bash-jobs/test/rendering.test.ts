@@ -129,7 +129,7 @@ test("bash duration excludes approval waiting even when the command produces no 
   await session.prompt("go");
   assert.equal(firstUpdate, false);
   assert.match(running, /Elapsed 1\.2s/);
-  const component = [...components.values()][0];
+  const component = [...components.values()][0]!;
   const completed = render(component);
   assert.match(completed, /\(no output\)/);
   assert.match(completed, /Took 1\.2s/);
@@ -153,7 +153,7 @@ test("denied bash calls do not display an execution duration", async (t) => {
     fauxAssistantMessage("done"),
   ]);
   await session.prompt("go");
-  const completed = render([...components.values()][0]);
+  const completed = render([...components.values()][0]!);
   assert.match(completed, /Approval denied/);
   assert.doesNotMatch(completed, /Elapsed|Took/);
 });
@@ -186,10 +186,10 @@ test("failed and subsequent bash calls retain builtin output rendering and indep
   await session.prompt("go");
   const completed = [...components.values()].map(render);
   assert.match(
-    completed[0],
+    completed[0]!,
     /\$ echo bad; exit 3[\s\S]*bad[\s\S]*Command exited with code 3[\s\S]*Took 1\.2s/,
   );
-  assert.match(completed[1], /\$ echo next \(timeout 2s\)[\s\S]*next[\s\S]*Took 1\.2s/);
+  assert.match(completed[1]!, /\$ echo next \(timeout 2s\)[\s\S]*next[\s\S]*Took 1\.2s/);
   const results = session.messages.filter((message) => message.role === "toolResult");
   assert.deepEqual(
     results.map((message) => message.isError),
@@ -225,20 +225,20 @@ test("backgrounding freezes the foreground duration and preserves the job result
   ]);
   // The job is adopted on the idle yield and already exited before bash_wait runs, so no waiting happens.
   await session.prompt("go");
-  const component = [...components.values()][0];
+  const component = [...components.values()][0]!;
   const completed = render(component);
   assert.match(completed, /still running in the background as job_id 1[\s\S]*Took 1\.2s/);
-  const outputComponent = [...components.values()][1];
+  const outputComponent = [...components.values()][1]!;
   const outputRendered = render(outputComponent);
   assert.match(outputRendered, /wait job 1 \(wait 5s\) sleep 0\.1; echo late/);
   assert.match(outputRendered, /late[\s\S]*exited with code 0 \(waited 0s\)/);
   const results = session.messages.filter((message) => message.role === "toolResult");
-  assert.deepEqual(results[0].details, { jobId: 1 });
-  assert.deepEqual(results[1].details, { jobId: 1, waitedMs: 0 });
+  assert.deepEqual(results[0]!.details, { jobId: 1 });
+  assert.deepEqual(results[1]!.details, { jobId: 1, waitedMs: 0 });
   outputComponent.invalidate();
   assert.match(render(outputComponent), /exited with code 0 \(waited 0s\)/);
   assert.match(
-    results[1].content.map((part) => (part.type === "text" ? part.text : "")).join(""),
+    results[1]!.content.map((part) => (part.type === "text" ? part.text : "")).join(""),
     /late[\s\S]*exited with code 0/,
   );
   now += 5_000;

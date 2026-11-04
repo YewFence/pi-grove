@@ -53,7 +53,7 @@ describe("TabBar.render", () => {
 
   it("renders one indicator per question + a Submit tab", () => {
     const tb = makeBar(buildProps());
-    const line = tb.render(80)[0];
+    const line = tb.render(80)[0]!;
     const empties = (line.match(/□/g) ?? []).length;
     expect(empties).toBe(3);
     expect(line).toContain("Submit");
@@ -63,7 +63,7 @@ describe("TabBar.render", () => {
 
   it("flips □ → ■ for answered questions", () => {
     const tb = makeBar(buildProps({ answeredIndices: [1] }));
-    const line = tb.render(80)[0];
+    const line = tb.render(80)[0]!;
     expect(line.match(/■/g)?.length).toBe(1);
     expect(line.match(/□/g)?.length).toBe(2);
   });
@@ -96,7 +96,7 @@ describe("TabBar.render", () => {
         totalTabs: 3,
       }),
     );
-    const line = tb.render(80)[0];
+    const line = tb.render(80)[0]!;
     expect(line).toContain("Q1");
     expect(line).toContain("Q2");
   });
@@ -115,15 +115,15 @@ describe("TabBar.render", () => {
     );
     for (const w of [40, 60, 80, 120]) {
       const lines = tb.render(w);
-      expect(visibleWidth(lines[0])).toBeLessThanOrEqual(w);
+      expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(w);
     }
   });
 
   it("setProps replaces props between renders", () => {
     const tb = makeBar(buildProps({ activeTabIndex: 0 }));
-    const before = tb.render(80)[0];
+    const before = tb.render(80)[0]!;
     tb.setProps(buildProps({ activeTabIndex: 1, answeredIndices: [0] }));
-    const after = tb.render(80)[0];
+    const after = tb.render(80)[0]!;
     expect(before).not.toBe(after);
     expect(after.match(/■/g)?.length).toBe(1);
   });

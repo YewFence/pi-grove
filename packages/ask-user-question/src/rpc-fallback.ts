@@ -90,8 +90,7 @@ export async function runRpcQuestionnaire(
   params: QuestionParams,
 ): Promise<QuestionnaireResult> {
   const answers: QuestionAnswer[] = [];
-  for (let qi = 0; qi < params.questions.length; qi++) {
-    const q = params.questions[qi];
+  for (const [qi, q] of params.questions.entries()) {
     const header = q.header ? `[${q.header}] ` : "";
     const answer = q.multiSelect
       ? await askMultiSelect(ui, q, qi, header)
@@ -118,7 +117,7 @@ async function askSingleSelect(
   // from a dismissal — treat it as one rather than fabricate an answer.
   if (idx == null) return undefined;
   if (idx < q.options.length) {
-    return { questionIndex, question: q.question, selected: [q.options[idx].label] };
+    return { questionIndex, question: q.question, selected: [q.options[idx]!.label] };
   }
   // "Type something." sentinel → free-text follow-up.
   const typed = await ui.input(`${header}${q.question}\n\n${CUSTOM_ANSWER_TITLE}`, "");
@@ -150,14 +149,13 @@ async function askMultiSelect(
   const segments = trimmed.split(",").map((s) => s.trim());
   const selected: string[] = [];
   let customStart = -1;
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
+  for (const [i, seg] of segments.entries()) {
     const idx = /^\d+\.?$/.test(seg) ? parseIndex(seg, q.options.length) : null;
     if (idx == null) {
       customStart = i;
       break;
     }
-    const label = q.options[idx].label;
+    const label = q.options[idx]!.label;
     if (!selected.includes(label)) selected.push(label);
   }
   if (customStart >= 0) {

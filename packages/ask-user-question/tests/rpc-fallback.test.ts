@@ -135,10 +135,10 @@ describe("ask_user_question.execute — RPC dialog walker (ctx.mode === 'rpc')",
       expect(mockEmit).toHaveBeenNthCalledWith(2, "rpiv:ask-user:blocked", { active: true });
       expect(mockEmit).toHaveBeenNthCalledWith(3, "rpiv:ask-user:blocked", { active: false });
       expect(mockEmit.mock.invocationCallOrder[1]).toBeLessThan(
-        stdout.stdoutWrite.mock.invocationCallOrder[0],
+        stdout.stdoutWrite.mock.invocationCallOrder[0]!,
       );
       expect(stdout.stdoutWrite.mock.invocationCallOrder[0]).toBeLessThan(
-        select.mock.invocationCallOrder[0],
+        select.mock.invocationCallOrder[0]!,
       );
     } finally {
       stdout.restore();

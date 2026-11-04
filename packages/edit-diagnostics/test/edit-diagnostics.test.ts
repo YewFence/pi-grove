@@ -281,8 +281,8 @@ test("keeps each concurrent call's own read snapshot", async () => {
       return result.message;
     }),
   );
-  assert.ok(errors[0].includes('File content:         "\\tfirst();"'));
-  assert.ok(errors[1].includes('File content:         "\\tsecond();"'));
+  assert.ok(errors[0]!.includes('File content:         "\\tfirst();"'));
+  assert.ok(errors[1]!.includes('File content:         "\\tsecond();"'));
 });
 
 test("does not reclassify write failures or cancellation as matching failures", async () => {

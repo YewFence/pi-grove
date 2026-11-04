@@ -1,6 +1,13 @@
 [type.svg]
 check-file = false
 
+[default.extend-words]
+ratatui = "ratatui"
+
 [files]
 # aube lockfiles are machine-generated; dependency names like `devlop` are not typos
 extend-exclude = ["aube-lock.yaml"]
+
+[type.ts.extend-words]
+# Partial text entered by the notes-editor regression test.
+hel = "hel"

@@ -27,21 +27,21 @@ const answered: QuestionnaireResult = {
 describe("buildQuestionnaireResponse — answered envelope", () => {
   it("emits one header-keyed line per answered question between prefix and suffix", () => {
     const r = buildQuestionnaireResponse(answered, params);
-    expect(r.content[0].text).toBe(
+    expect(r.content[0]!.text).toBe(
       `${ENVELOPE_PREFIX}\nAuth="JWT"\nLib="date-fns"\n${ENVELOPE_SUFFIX}`,
     );
     expect(r.details).toBe(answered);
   });
 
   it("keys lines by header, never echoing the full question text", () => {
-    const text = buildQuestionnaireResponse(answered, params).content[0].text;
+    const text = buildQuestionnaireResponse(answered, params).content[0]!.text;
     expect(text).not.toContain("Which auth?");
     expect(text).not.toContain("Which lib?");
   });
 
   it("skips unanswered questions (partial submission)", () => {
-    const partial: QuestionnaireResult = { cancelled: false, answers: [answered.answers[1]] };
-    const text = buildQuestionnaireResponse(partial, params).content[0].text;
+    const partial: QuestionnaireResult = { cancelled: false, answers: [answered.answers[1]!] };
+    const text = buildQuestionnaireResponse(partial, params).content[0]!.text;
     expect(text).not.toContain("Auth=");
     expect(text).toContain('Lib="date-fns"');
   });
@@ -51,7 +51,7 @@ describe("buildQuestionnaireResponse — answered envelope", () => {
       cancelled: false,
       answers: [{ questionIndex: 0, question: "Which auth?", selected: ["JWT", "OAuth"] }],
     };
-    expect(buildQuestionnaireResponse(multi, params).content[0].text).toContain(
+    expect(buildQuestionnaireResponse(multi, params).content[0]!.text).toContain(
       'Auth="JWT, OAuth"',
     );
   });
@@ -68,7 +68,7 @@ describe("buildQuestionnaireResponse — answered envelope", () => {
         },
       ],
     };
-    const text = buildQuestionnaireResponse(noted, params).content[0].text;
+    const text = buildQuestionnaireResponse(noted, params).content[0]!.text;
     expect(text).toContain('Auth="JWT". user notes: refresh tokens too');
   });
 
@@ -76,7 +76,7 @@ describe("buildQuestionnaireResponse — answered envelope", () => {
     const text = buildQuestionnaireResponse(
       { ...answered, globalNote: "prefer small deps" },
       params,
-    ).content[0].text;
+    ).content[0]!.text;
     expect(text).toBe(
       `${ENVELOPE_PREFIX}\nAuth="JWT"\nLib="date-fns"\nglobal note: prefer small deps\n${ENVELOPE_SUFFIX}`,
     );
@@ -87,7 +87,7 @@ describe("buildQuestionnaireResponse — answered envelope", () => {
       { cancelled: false, answers: [], globalNote: "only this" },
       params,
     );
-    expect(r.content[0].text).toBe(
+    expect(r.content[0]!.text).toBe(
       `${ENVELOPE_PREFIX}\nglobal note: only this\n${ENVELOPE_SUFFIX}`,
     );
     expect(r.details.cancelled).toBe(false);
@@ -99,14 +99,14 @@ describe("buildQuestionnaireResponse — answered envelope", () => {
       cancelled: false,
       answers: [{ questionIndex: 0, question: "Pick one", selected: ["A"] }],
     };
-    expect(buildQuestionnaireResponse(result, headerless).content[0].text).toContain('Q1="A"');
+    expect(buildQuestionnaireResponse(result, headerless).content[0]!.text).toContain('Q1="A"');
   });
 });
 
 describe("buildQuestionnaireResponse — decline envelope", () => {
   it("null result declines", () => {
     const r = buildQuestionnaireResponse(null, params);
-    expect(r.content[0].text).toBe(DECLINE_MESSAGE);
+    expect(r.content[0]!.text).toBe(DECLINE_MESSAGE);
     expect(r.details).toEqual({ answers: [], cancelled: true });
   });
 
@@ -117,14 +117,14 @@ describe("buildQuestionnaireResponse — decline envelope", () => {
       globalNote: "still noted",
     };
     const r = buildQuestionnaireResponse(cancelled, params);
-    expect(r.content[0].text).toBe(DECLINE_MESSAGE);
+    expect(r.content[0]!.text).toBe(DECLINE_MESSAGE);
     expect(r.details.answers).toEqual(cancelled.answers);
     expect(r.details.globalNote).toBe("still noted");
   });
 
   it("zero answers and no global note declines even when not cancelled", () => {
     const r = buildQuestionnaireResponse({ cancelled: false, answers: [] }, params);
-    expect(r.content[0].text).toBe(DECLINE_MESSAGE);
+    expect(r.content[0]!.text).toBe(DECLINE_MESSAGE);
     expect(r.details.cancelled).toBe(true);
   });
 });

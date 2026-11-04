@@ -212,7 +212,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
     s.setFocused(true);
     const width = 12;
     const lines = s.render(width);
-    expect(visibleWidth(lines[0])).toBeLessThanOrEqual(width);
+    expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(width);
   });
 
   it("renders cursor at end-of-buffer when no offset is set (default fallback)", () => {

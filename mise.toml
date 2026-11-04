@@ -8,7 +8,13 @@ aube = "2"
 git-cliff = "2"
 "packslip:github.com/YewFence/actions/josh" = { version = "26.8.28", minimum_release_age = "0d" }
 pinact = "4"
-actionlint = "1"
+jactionlint = "2"
+"github:suzuki-shunsuke/nllint" = "1"
+typos = "1.48.0"
+betterleaks = "1"
+
+[env]
+PINACT_MIN_AGE = "3"
 
 [tasks."deps:install"]
 run = "aube install --frozen-lockfile"
@@ -16,14 +22,45 @@ run = "aube install --frozen-lockfile"
 [tasks."deps:check"]
 run = "aube install --dry-run"
 
+[tasks."deps:fix"]
+run = "aube install --lockfile-only"
+
+[tasks."deps:update"]
+run = "aube update"
+
+[tasks.audit]
+run = "aube audit"
+
 [tasks.typecheck]
 run = "aube -r run --if-present typecheck"
 
 [tasks.lint]
 run = "aube exec oxlint"
 
+[tasks."lint:fix"]
+run = "aube exec oxlint --fix"
+
 [tasks."fmt:check"]
 run = "aube exec oxfmt --check ."
+
+[tasks."fmt:fix"]
+run = "aube exec oxfmt ."
+
+[tasks."typos:check"]
+run = "typos"
+
+[tasks."typos:fix"]
+run = "typos --write-changes"
+
+[tasks."newline:check"]
+file = "scripts/newlines.sh"
+
+[tasks."newline:fix"]
+file = "scripts/newlines.sh"
+env = { NEWLINES_FIX = "1" }
+
+[tasks."leaks:check"]
+file = "scripts/check-leaks.sh"
 
 [tasks.test]
 run = ["aube -r run --if-present test", "aube exec vitest run"]
@@ -35,14 +72,21 @@ run = 'node scripts/check-packages.mjs "$usage_package"'
 
 [tasks.check]
 run = [
-  { tasks = ["deps:check", "fmt:check", "typecheck", "lint", "actions:check"] },
+  { tasks = ["deps:check", "newline:check", "typos:check", "fmt:check", "typecheck", "lint", "actions:check"] },
+  { task = "leaks:check" },
   { task = "test" },
   { task = "package:check" },
   { task = "docs:build" }
 ]
 
 [tasks.fix]
-run = ["aube install --lockfile-only", "aube exec oxfmt .", "aube exec oxlint --fix"]
+run = [
+  { task = "deps:fix" },
+  { task = "newline:fix" },
+  { task = "typos:fix" },
+  { task = "fmt:fix" },
+  { task = "lint:fix" }
+]
 
 [tasks."release:plan"]
 description = "Compute one package's version and release notes"
@@ -83,7 +127,14 @@ flag "--dry-run"
 run = 'node scripts/release.mjs publish "$usage_tag" "$usage_dry_run"'
 
 [tasks."actions:check"]
-run = ["pinact run --fix=false --no-api", "actionlint .github/workflows/*.yml"]
+depends = ["actions:pin-offline:check"]
+run = "jactionlint .github/workflows/*.yml"
+
+[tasks."actions:pin-offline:check"]
+run = "unset PINACT_MIN_AGE && pinact run --fix=false --no-api"
+
+[tasks."actions:pin:check"]
+run = "pinact run --check"
 
 [tasks."actions:update"]
 run = "pinact run --update"

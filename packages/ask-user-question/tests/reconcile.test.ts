@@ -129,7 +129,7 @@ describe("registerAskUserQuestionReconciler", () => {
     const { pi, captured } = createMockPi();
     pi.setActiveTools([ASK_USER_QUESTION_TOOL_NAME, "other"]);
     registerAskUserQuestionReconciler(pi);
-    const handler = captured.events.get("before_agent_start")![0];
+    const handler = captured.events.get("before_agent_start")![0]!;
     vi.mocked(pi.setActiveTools).mockClear();
     handler(undefined as never, createMockCtx({ hasUI: false }));
     expect(pi.setActiveTools).toHaveBeenCalledWith(["other"]);
@@ -139,7 +139,7 @@ describe("registerAskUserQuestionReconciler", () => {
     const { pi, captured } = createMockPi();
     pi.setActiveTools(["other"]);
     registerAskUserQuestionReconciler(pi);
-    const handler = captured.events.get("before_agent_start")![0];
+    const handler = captured.events.get("before_agent_start")![0]!;
     handler(undefined as never, createMockCtx({ hasUI: true }));
     expect(pi.getActiveTools()).toEqual(["other", ASK_USER_QUESTION_TOOL_NAME]);
   });

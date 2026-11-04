@@ -400,7 +400,7 @@ describe("PreviewPane — right-aligned preview with a bounded options column", 
     const short = makePane(question, () => 120);
     short.optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
     const shortLines = short.pane.render(120);
-    const shortMD = extractPreviewColumnLines(shortLines)[0].indexOf("MD[");
+    const shortMD = extractPreviewColumnLines(shortLines)[0]!.indexOf("MD[");
 
     const longQ: QuestionData = {
       question: "pick",
@@ -413,7 +413,7 @@ describe("PreviewPane — right-aligned preview with a bounded options column", 
     const long = makePane(longQ, () => 120);
     long.optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
     const longLines = long.pane.render(120);
-    const longMD = extractPreviewColumnLines(longLines)[0].indexOf("MD[");
+    const longMD = extractPreviewColumnLines(longLines)[0]!.indexOf("MD[");
 
     expect(visibleWidth(shortLines.find((line) => line.includes("┌"))!)).toBe(120);
     expect(visibleWidth(longLines.find((line) => line.includes("┌"))!)).toBe(120);
@@ -442,7 +442,7 @@ describe("PreviewPane — right-aligned preview with a bounded options column", 
     // leftWidth + gap(2) + leftPad(1) + leftBorderBar(1) + innerLeftPad(1).
     const expectedLeft = adaptiveLeftWidth(items, 3, 200);
     const expectedMdIdx = expectedLeft + PREVIEW_COLUMN_GAP + 1 + 2;
-    const mdIdx = preview[0].indexOf("MD[");
+    const mdIdx = preview[0]!.indexOf("MD[");
     expect(mdIdx).toBe(expectedMdIdx);
   });
 
@@ -611,22 +611,22 @@ describe("PreviewPane — slack donation to left column", () => {
 describe("renderBorderedBox helper", () => {
   it("wraps lines in 4-sided border with `┌─┐│└┘` corners", () => {
     const out = renderBorderedBox(["hello"], 20, (s) => s);
-    expect(out[0].startsWith("┌")).toBe(true);
-    expect(out[0].endsWith("┐")).toBe(true);
-    expect(out[1].startsWith("│")).toBe(true);
-    expect(out[1].endsWith("│")).toBe(true);
-    expect(out[out.length - 1].startsWith("└")).toBe(true);
-    expect(out[out.length - 1].endsWith("┘")).toBe(true);
+    expect(out[0]!.startsWith("┌")).toBe(true);
+    expect(out[0]!.endsWith("┐")).toBe(true);
+    expect(out[1]!.startsWith("│")).toBe(true);
+    expect(out[1]!.endsWith("│")).toBe(true);
+    expect(out[out.length - 1]!.startsWith("└")).toBe(true);
+    expect(out[out.length - 1]!.endsWith("┘")).toBe(true);
   });
 
   it("right-pads content lines so the right `│` lands at fixed column", () => {
     const out = renderBorderedBox(["hi"], 20, (s) => s);
-    expect(visibleWidth(out[1])).toBe(20);
+    expect(visibleWidth(out[1]!)).toBe(20);
   });
 
   it("emits truncation indicator on bottom row when hidden > 0", () => {
     const out = renderBorderedBox(["a", "b"], 30, (s) => s, 5);
-    const bottom = out[out.length - 1];
+    const bottom = out[out.length - 1]!;
     expect(bottom).toContain("✂");
     expect(bottom).toContain("5 lines hidden");
     expect(bottom.startsWith("└")).toBe(true);
