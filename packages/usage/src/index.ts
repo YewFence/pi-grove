@@ -224,6 +224,9 @@ function renderStatus(rt: SessionRuntime | null): string {
     rt.config.enabled
       ? `endpoint: ${rt.config.endpoint}`
       : `reason: ${rt.config.disabledReason ?? "unknown"}`,
+    rt.config.usedOtelFallback
+      ? "config: PI_USAGE_* with OTEL_* fallback"
+      : "config: PI_USAGE_* only (set PI_USAGE_USE_OTEL_ENV=true to read OTEL_*)",
     `project: ${rt.project.name} (${rt.project.root})`,
     `session: ${formatDuration(rt.stats.fileMs + rt.stats.appMs)} effective ` +
       `(files ${formatDuration(rt.stats.fileMs)}, app ${formatDuration(rt.stats.appMs)}, ` +

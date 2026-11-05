@@ -75,7 +75,9 @@ With no endpoint configured the extension is completely inert — it still track
 
 ## Trying it out
 
-See [`examples/`](examples/) for a ready-to-adapt Tempo config (metrics-generator with the `coding.*` dimensions) and a starter Grafana dashboard. The short version:
+For the fastest end-to-end smoke test, follow the [OpenObserve local quickstart](examples/openobserve/README.md): it starts a disposable OTLP trace backend with Docker Compose and lets you inspect `pi.request`/`pi.segment` in a browser, without setting up Tempo or Grafana first.
+
+See [`examples/`](examples/) for the OpenObserve quickstart, a ready-to-adapt Tempo config (metrics-generator with the `coding.*` dimensions), and a starter Grafana dashboard. The short version:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318

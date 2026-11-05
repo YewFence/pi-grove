@@ -1,0 +1,329 @@
+{
+  "version": 5,
+  "title": "Pi Usage — Coding Insights",
+  "description": "WakaTime-style coding-time dashboard from pi-usage OTLP spans. Queries the traces stream directly with SQL; no pipeline needed. OpenObserve stores span duration in microseconds.",
+  "tabs": [
+    {
+      "tabId": "1437374919763",
+      "name": "Overview",
+      "panels": [
+        {
+          "id": "panel_total",
+          "type": "metric",
+          "title": "Total coding time (minutes)",
+          "description": "All settled effective-work segments in range",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "decimals": 0,
+            "top_results_others": false,
+            "axis_border_show": false,
+            "legend_width": { "unit": "px" },
+            "base_map": { "type": "osm" },
+            "map_view": { "zoom": 1, "lat": 0, "lng": 0 },
+            "map_symbol_style": {
+              "size": "by Value",
+              "size_by_value": { "min": 1, "max": 100 },
+              "size_fixed": 2
+            },
+            "drilldown": [],
+            "mark_line": [],
+            "connect_nulls": false,
+            "no_value_replacement": "",
+            "wrap_table_cells": false
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT SUM(duration)/1000000.0/60.0 as \"y_axis_1\" FROM \"default\" WHERE coding_segment_kind IS NOT NULL",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Minutes",
+                    "alias": "y_axis_1",
+                    "column": "duration",
+                    "color": "#53a751",
+                    "aggregationFunction": "sum",
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100
+              }
+            }
+          ],
+          "layout": { "x": 0, "y": 0, "w": 12, "h": 12, "i": 1 },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "panel_lang",
+          "type": "donut",
+          "title": "Languages (file-attributed, minutes)",
+          "description": "Effective time by coding.language",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "decimals": 0,
+            "top_results_others": false,
+            "axis_border_show": false,
+            "legend_width": { "unit": "px" },
+            "base_map": { "type": "osm" },
+            "map_view": { "zoom": 1, "lat": 0, "lng": 0 },
+            "map_symbol_style": {
+              "size": "by Value",
+              "size_by_value": { "min": 1, "max": 100 },
+              "size_fixed": 2
+            },
+            "drilldown": [],
+            "mark_line": [],
+            "connect_nulls": false,
+            "no_value_replacement": "",
+            "wrap_table_cells": false
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT coding_language as \"x_axis_1\", SUM(duration)/1000000.0/60.0 as \"y_axis_1\" FROM \"default\" WHERE coding_segment_kind = 'file' AND coding_language IS NOT NULL GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Language",
+                    "alias": "x_axis_1",
+                    "column": "coding_language",
+                    "color": null,
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Minutes",
+                    "alias": "y_axis_1",
+                    "column": "duration",
+                    "color": "#d1a3f2",
+                    "aggregationFunction": "sum",
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100
+              }
+            }
+          ],
+          "layout": { "x": 12, "y": 0, "w": 24, "h": 12, "i": 2 },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "panel_project",
+          "type": "h-bar",
+          "title": "Projects (minutes)",
+          "description": "Effective time by coding.project",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "decimals": 0,
+            "top_results_others": false,
+            "axis_border_show": false,
+            "legend_width": { "unit": "px" },
+            "base_map": { "type": "osm" },
+            "map_view": { "zoom": 1, "lat": 0, "lng": 0 },
+            "map_symbol_style": {
+              "size": "by Value",
+              "size_by_value": { "min": 1, "max": 100 },
+              "size_fixed": 2
+            },
+            "drilldown": [],
+            "mark_line": [],
+            "connect_nulls": false,
+            "no_value_replacement": "",
+            "wrap_table_cells": false
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT coding_project as \"x_axis_1\", SUM(duration)/1000000.0/60.0 as \"y_axis_1\" FROM \"default\" WHERE coding_segment_kind IS NOT NULL GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Project",
+                    "alias": "x_axis_1",
+                    "column": "coding_project",
+                    "color": null,
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Minutes",
+                    "alias": "y_axis_1",
+                    "column": "duration",
+                    "color": "#67b1ee",
+                    "aggregationFunction": "sum",
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100
+              }
+            }
+          ],
+          "layout": { "x": 36, "y": 0, "w": 12, "h": 12, "i": 3 },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "panel_daily",
+          "type": "stacked",
+          "title": "Daily coding time (minutes): file vs app",
+          "description": "Daily sum stacked by segment kind",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "decimals": 0,
+            "top_results_others": false,
+            "axis_border_show": false,
+            "legend_width": { "unit": "px" },
+            "base_map": { "type": "osm" },
+            "map_view": { "zoom": 1, "lat": 0, "lng": 0 },
+            "map_symbol_style": {
+              "size": "by Value",
+              "size_by_value": { "min": 1, "max": 100 },
+              "size_fixed": 2
+            },
+            "drilldown": [],
+            "mark_line": [],
+            "connect_nulls": false,
+            "no_value_replacement": "",
+            "wrap_table_cells": false
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp, '1 day') as \"x_axis_1\", coding_segment_kind as \"breakdown_1\", SUM(duration)/1000000.0/60.0 as \"y_axis_1\" FROM \"default\" WHERE coding_segment_kind IS NOT NULL GROUP BY x_axis_1, breakdown_1 ORDER BY x_axis_1 ASC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Day",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "aggregationFunction": "histogram",
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Minutes",
+                    "alias": "y_axis_1",
+                    "column": "duration",
+                    "color": "#f2c744",
+                    "aggregationFunction": "sum",
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Kind",
+                    "alias": "breakdown_1",
+                    "column": "coding_segment_kind",
+                    "color": null,
+                    "sortBy": "DESC",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100
+              }
+            }
+          ],
+          "layout": { "x": 0, "y": 12, "w": 48, "h": 13, "i": 4 },
+          "htmlContent": "",
+          "markdownContent": ""
+        }
+      ]
+    }
+  ],
+  "variables": { "list": [], "showDynamicFilters": false },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "7d",
+    "startTime": null,
+    "endTime": null
+  }
+}

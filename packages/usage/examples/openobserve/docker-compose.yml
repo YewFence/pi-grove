@@ -1,0 +1,22 @@
+# Local OpenObserve for pi-usage quickstart. Throwaway: bring it up, watch
+# spans arrive, tear it down. See README.md for the full walkthrough.
+#
+#   docker compose up -d
+#
+services:
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    container_name: pi-usage-openobserve
+    ports:
+      # UI, OTLP/HTTP (/api/<org>/v1/traces) and OTLP/gRPC all share this node.
+      - "5080:5080"
+    environment:
+      ZO_DATA_DIR: /data
+      ZO_ROOT_USER_EMAIL: root@example.com
+      ZO_ROOT_USER_PASSWORD: PiUsage!7x # betterleaks:allow — disposable local example, not a secret
+    volumes:
+      - openobserve-data:/data
+    restart: unless-stopped
+
+volumes:
+  openobserve-data:

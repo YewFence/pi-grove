@@ -1,9 +1,10 @@
 # pi-usage backend examples
 
-These are **examples, not requirements** — pi-usage speaks plain OTLP/HTTP and works with any OpenTelemetry-compatible trace backend. This directory just happens to document the reference setup the dashboards and queries below assume: Tempo storing traces, its metrics-generator deriving Prometheus metrics, Grafana querying both.
+These are **examples, not requirements** — pi-usage speaks plain OTLP/HTTP and works with any OpenTelemetry-compatible trace backend. For the quickest local smoke test, use [`openobserve/`](openobserve/): Docker Compose starts a disposable trace backend with a browser UI and no Tempo/Grafana setup. The reference setup for the dashboards and queries below remains Tempo storing traces, its metrics-generator deriving Prometheus metrics, and Grafana querying both.
 
 ## Pieces
 
+- [`openobserve/README.md`](openobserve/README.md) — local quickstart: `docker compose up`, point pi-usage at OpenObserve, inspect traces in the UI.
 - [`tempo.yaml`](tempo.yaml) — single-binary Tempo with the OTLP receiver and, crucially, the metrics-generator spanmetrics processor configured with the `coding.*` dimensions. Point the `remote_write` URL at your Prometheus.
 - [`dashboard.json`](dashboard.json) — importable Grafana dashboard (total time, languages donut, projects, daily bars). Set your Prometheus datasource uid after import.
 

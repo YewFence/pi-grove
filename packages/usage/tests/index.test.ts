@@ -85,11 +85,12 @@ describe("pi-usage extension", () => {
     fake = createFakePi();
     previousEnv = { ...process.env };
     process.env.XDG_STATE_HOME = stateDir;
-    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
-    delete process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
-    delete process.env.OTEL_EXPORTER_OTLP_HEADERS;
-    delete process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS;
-    delete process.env.OTEL_RESOURCE_ATTRIBUTES;
+    delete process.env.PI_USAGE_OTLP_ENDPOINT;
+    delete process.env.PI_USAGE_OTLP_TRACES_ENDPOINT;
+    delete process.env.PI_USAGE_OTLP_HEADERS;
+    delete process.env.PI_USAGE_OTLP_TRACES_HEADERS;
+    delete process.env.PI_USAGE_RESOURCE_ATTRIBUTES;
+    delete process.env.PI_USAGE_USE_OTEL_ENV;
     delete process.env.PI_USAGE_ENABLED;
     delete process.env.PI_USAGE_ENTITY;
     delete process.env.PI_USAGE_PROJECT;
@@ -108,7 +109,7 @@ describe("pi-usage extension", () => {
   }
 
   it("exports a request span and a file segment span for an edit flow", async () => {
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://tempo.test:4318";
+    process.env.PI_USAGE_OTLP_ENDPOINT = "http://tempo.test:4318";
     const calls = stubFetch();
     const ctx = createCtx(dir);
     const target = join(dir, "src", "main.py");
@@ -150,7 +151,7 @@ describe("pi-usage extension", () => {
   });
 
   it("does not attribute a tool call that left the file unchanged", async () => {
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://tempo.test:4318";
+    process.env.PI_USAGE_OTLP_ENDPOINT = "http://tempo.test:4318";
     const calls = stubFetch();
     const ctx = createCtx(dir);
     const target = join(dir, "notes.md");
@@ -176,7 +177,7 @@ describe("pi-usage extension", () => {
   });
 
   it("counts one overlapping same-path batch as a single modification", async () => {
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://tempo.test:4318";
+    process.env.PI_USAGE_OTLP_ENDPOINT = "http://tempo.test:4318";
     const calls = stubFetch();
     const ctx = createCtx(dir);
     const target = join(dir, "a.ts");
@@ -230,7 +231,7 @@ describe("pi-usage extension", () => {
   });
 
   it("status command reports session totals while exporting", async () => {
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://tempo.test:4318";
+    process.env.PI_USAGE_OTLP_ENDPOINT = "http://tempo.test:4318";
     stubFetch();
     const ctx = createCtx(dir);
     const target = join(dir, "b.go");
