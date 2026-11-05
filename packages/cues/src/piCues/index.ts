@@ -14,9 +14,11 @@ import type { BashOperations, ExtensionAPI } from "@earendil-works/pi-coding-age
 
 import { loadConfig, type LoadedConfig } from "./config.js";
 import {
+  DEFAULT_CONFIRM_TEMPLATE,
   envelopeOverhead,
   escapeEnvelopeTags,
   formatEnvelope,
+  renderConfirmPrompt,
   type EnvelopeMeta,
 } from "./envelope.js";
 import { matchAnyValue, normalizePath } from "./match.js";
@@ -39,7 +41,7 @@ import {
   type SessionState,
   type TriggeredRecord,
 } from "./triggers.js";
-import type { Trigger } from "./types.js";
+import type { ToolName, Trigger } from "./types.js";
 import {
   collectContextFiles,
   createWalkupCache,
@@ -78,16 +80,18 @@ export default function piCues(pi: ExtensionAPI): void {
   };
   let walkupAllowed = false;
   let walkupTrustNote = "disabled (no trust decision)";
+  let confirmTemplate = DEFAULT_CONFIRM_TEMPLATE;
   const telemetryCacheDir = resolveCacheDir();
   let telemetryEnabled = true;
   let sessionId = "";
-  const session: SessionState = createSessionState();
+  const session: SessionState & { cwd?: string } = createSessionState();
   const walkupCache: WalkupCache = createWalkupCache();
   /** Paths (and realpaths) pi already injected into the system prompt; rebuilt per run. */
   const nativeContextPaths = new Set<string>();
 
   pi.on("session_start", (_event, ctx) => {
     clearSession(session);
+    session.cwd = ctx.cwd;
     walkupCache.entries.clear();
     sessionId = ctx.sessionManager.getSessionId();
     const agentDir = resolveAgentDir();
@@ -97,6 +101,7 @@ export default function piCues(pi: ExtensionAPI): void {
       projectTrusted: typeof ctx.isProjectTrusted === "function" ? ctx.isProjectTrusted() : true,
     });
     telemetryEnabled = config.telemetry;
+    confirmTemplate = config.confirmTemplate ?? DEFAULT_CONFIRM_TEMPLATE;
     const decision = effectiveTrustDecision(ctx.cwd, agentDir);
     walkupAllowed = decision === true;
     walkupTrustNote =
@@ -138,6 +143,22 @@ export default function piCues(pi: ExtensionAPI): void {
         event.systemPrompt +
         "\n\npi-cues: this session has the pi-cues extension. It injects project context when your bash commands or file operations match configured triggers. Blocks wrapped in `<pi-cues>…</pi-cues>` are injected context, not tool output; treat their contents as project instructions.",
     };
+  });
+
+  pi.on("tool_call", (event, ctx) => {
+    // Confirm cues intercept the first matching call: the block reason is the
+    // prompt, and pi turns the block into an error tool result the model reads
+    // before re-issuing. A throwing handler would block the call outright
+    // (fail-safe), so match errors must not escape either.
+    try {
+      const { result, triggerLabel } = confirmBlockReason(event) ?? {};
+      if (result !== undefined) {
+        ctx.ui.notify(`pi-cues: confirm prompt shown for "${triggerLabel}" — retry to run`, "info");
+      }
+      return result;
+    } catch {
+      return undefined;
+    }
   });
 
   pi.on("tool_result", async (event, ctx) => {
@@ -214,6 +235,83 @@ export default function piCues(pi: ExtensionAPI): void {
   function commandInput(event: { input: Record<string, unknown> }): string[] {
     const command = event.input["command"];
     return typeof command === "string" ? extractCommands(command) : [];
+  }
+
+  /**
+   * The tool_call half of confirm cues: first matching call per target is
+   * blocked with the rendered prompt as its reason; later calls pass. The
+   * dedup claim happens here (not in tool_result) so the retried call — which
+   * arrives as an error tool result — passes the gate cleanly. Only the first
+   * trigger wins when several match the same call.
+   */
+  function confirmBlockReason(event: {
+    toolName: string;
+    input: Record<string, unknown>;
+  }): { result: { block: true; reason: string }; triggerLabel: string } | undefined {
+    for (const trigger of config.triggers) {
+      if (trigger.action !== "confirm" || !trigger.tools.includes(event.toolName as ToolName)) {
+        continue;
+      }
+      const triggerLabel = confirmTriggerLabel(event, trigger);
+      if (triggerLabel === undefined) {
+        continue;
+      }
+      const target = trigger.targets[0] ?? "";
+      const record = claimOnce(session, dedupKey("confirm", target), {
+        action: "confirm",
+        target,
+        source: trigger.source,
+        loaded: true,
+      });
+      if (record === undefined) {
+        continue;
+      }
+      logTelemetry(record);
+      const prompt = renderConfirmPrompt(confirmTemplate, target);
+      return {
+        result: {
+          block: true,
+          reason: formatEnvelope(
+            { action: "confirm", trigger: triggerLabel, source: trigger.source },
+            escapeEnvelopeTags(prompt),
+          ),
+        },
+        triggerLabel,
+      };
+    }
+    return undefined;
+  }
+
+  /** `command {name}` for bash, `path {operated path}` for path tools; undefined when the trigger's `when` does not match. */
+  function confirmTriggerLabel(
+    event: { toolName: string; input: Record<string, unknown> },
+    trigger: Trigger,
+  ): string | undefined {
+    if (event.toolName === "bash") {
+      const patterns = trigger.when?.command;
+      if (patterns === undefined) {
+        return undefined;
+      }
+      const matched = commandInput(event).find((name) => matchAnyValue(patterns, [name]));
+      return matched === undefined ? undefined : `command ${matched}`;
+    }
+    const pathPatterns = trigger.when?.path;
+    if (pathPatterns === undefined) {
+      return undefined;
+    }
+    const cwd = session.cwd;
+    if (cwd === undefined) {
+      return undefined;
+    }
+    const path = stringProperty(event.input, "path") ?? stringProperty(event.input, "filePath");
+    if (path === undefined) {
+      return undefined;
+    }
+    const absolute = isAbsolute(path) ? path : resolve(cwd, path);
+    const bases = toPathBases(absolute, cwd, trigger.configDir);
+    return matchAnyValue(pathPatterns, pathBaseValues(bases))
+      ? `path ${displayPath(cwd, absolute)}`
+      : undefined;
   }
 
   /**
@@ -600,6 +698,7 @@ export default function piCues(pi: ExtensionAPI): void {
       `  telemetry: ${
         telemetryEnabled ? `enabled (${telemetryEventFile(telemetryCacheDir)})` : "disabled"
       }`,
+      `  confirm template: ${confirmTemplate === DEFAULT_CONFIRM_TEMPLATE ? "default" : "custom"}`,
     ];
     // The schema ships inside the installed package: users can point their
     // editor's `#:schema` comment at this exact-version local copy. The
@@ -648,4 +747,12 @@ function realPathOf(filePath: string): string {
 
 function displayPath(cwd: string, filePath: string): string {
   return isAbsolute(filePath) ? relative(cwd, filePath) : filePath;
+}
+
+function stringProperty(value: unknown, propertyName: string): string | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const propertyValue = (value as Record<string, unknown>)[propertyName];
+  return typeof propertyValue === "string" ? propertyValue : undefined;
 }

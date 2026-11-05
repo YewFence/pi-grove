@@ -259,6 +259,55 @@ exclude = "x.md"
   });
 });
 
+describe("confirm settings", () => {
+  it("defaults to the builtin template", () => {
+    const home = makeTree({ ".pi/agent/extensions/pi-cues/config.toml": VALID });
+    const config = loadConfig({ cwd: makeTree({}), agentDir: join(home, ".pi", "agent") });
+    expect(config.confirmTemplate).toBeUndefined();
+  });
+
+  it("accepts a global template containing {target}", () => {
+    const home = makeTree({
+      ".pi/agent/extensions/pi-cues/config.toml":
+        'version = 1\n[confirm]\ntemplate = "请参考以下信息，必要时调整命令后重发：\\n\\n{target}"\n',
+    });
+    const config = loadConfig({ cwd: makeTree({}), agentDir: join(home, ".pi", "agent") });
+    expect(config.confirmTemplate).toContain("{target}");
+    expect(config.diagnostics).toEqual([]);
+  });
+
+  it("ignores a project-level template with a warning", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": 'version = 1\n[confirm]\ntemplate = "{target}"\n',
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.confirmTemplate).toBeUndefined();
+    expect(
+      config.diagnostics.some((d) => d.message.includes("only valid in the global config")),
+    ).toBe(true);
+  });
+
+  it("diagnoses templates without {target} and keeps the default", () => {
+    const home = makeTree({
+      ".pi/agent/extensions/pi-cues/config.toml":
+        'version = 1\n[confirm]\ntemplate = "no placeholder here"\n',
+    });
+    const config = loadConfig({ cwd: makeTree({}), agentDir: join(home, ".pi", "agent") });
+    expect(config.confirmTemplate).toBeUndefined();
+    expect(config.diagnostics.some((d) => d.message.includes("{target}"))).toBe(true);
+  });
+
+  it("rejects a confirm trigger with multiple targets", () => {
+    const home = makeTree({
+      ".pi/agent/extensions/pi-cues/config.toml":
+        'version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "confirm"\ntarget = ["a", "b"]\n',
+    });
+    const config = loadConfig({ cwd: makeTree({}), agentDir: join(home, ".pi", "agent") });
+    expect(config.triggers.some((t) => t.action === "confirm")).toBe(false);
+    expect(config.diagnostics.some((d) => d.message.includes("single target"))).toBe(true);
+  });
+});
+
 describe("telemetry setting", () => {
   it("defaults to enabled", () => {
     const home = makeTree({ ".pi/agent/extensions/pi-cues/config.toml": VALID });

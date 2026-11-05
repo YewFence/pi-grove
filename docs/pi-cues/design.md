@@ -54,13 +54,16 @@ flowchart LR
     G --> I["记录去重"]
     H --> I
     H2 --> I
+    F -- confirm --> F2["tool_call 事前拦截\n提示作为 block reason"]
+    F2 --> I
 ```
 
-触发点挂三类事件：
+触发点挂四类事件：
 
 - `tool_result`（`toolName === "bash"`）：从 `event.input.command` 取命令串，走命令提取管道
 - `tool_result`（`toolName` 为 `read`/`edit`/`write`）：从 `event.details.filePath` / `event.input.path` 提取路径，走路径管道
 - `user_bash`：用户手动跑的 bash 命令，走命令提取管道。handler 必须永不抛出（`user_bash` handler 失败会**阻断用户命令**执行），全部逻辑包在 try/catch 里兜底
+- `tool_call`（仅 confirm）：pi 在每个工具调用执行前发出，handler 返回 `{ block: true, reason }` 即拦截，pi 把 reason 包装成 error tool result 交给模型——命令未执行，模型读 reason 后可调整并重发。这是唯一先于执行的事件，也是 confirm 的立足点（ADR 0016）；匹配失败同样必须吞掉（pi 对抛错的 tool_call handler 按拦截处理）
 
 `user_bash` 的注入出口与 `tool_result` 不同：`UserBashEventResult` 只有 `{operations}` / `{result}` 两个接管执行的分支，没有附加内容的通道，返回 `undefined` 就是纯观察。且事件在命令**执行前**触发，立即 `sendMessage` 会打断进行中的 agent turn。因此 user_bash 命中的 cue **记为 pending，在下一次模型请求前用 `pi.sendMessage()` 发出**（去重 Set 在命中时即记，语义与 tool_result 管道一致）。`excludeFromContext` 为 true（`!!` 前缀）的命令**不触发**——命令本身不进上下文，注入的 cue 会成为无源之水。
 
@@ -278,9 +281,14 @@ sessionWalkupCache: Map<targetDir, {
 - 清理时机：`session_start` / `session_compact` / `/reload` 清空整个 map，与去重 Set 同步
 - 与去重 Set 分工：**Set 管「已注入的目标不再注入」，此缓存管「发现过程不再重做」**，两层互补不重叠
 
+
+## 事前拦截（confirm action，ADR 0016）
+
+其余 action 都在 `tool_result` 事后注入；confirm 是唯一的例外，在 `tool_call` 事前拦截。动机：有些提示必须在执行**之前**到达，否则被提醒的那次执行本身就错了（`docker build` 忘记走代理、全量构建耗时警告）。首次匹配返回 `{ block: true, reason }`，reason 是 `action="confirm"` 的信封，内容为提示模板渲染文本；默认英文模板承担三重语义——未执行、非权限拒绝、必要时调整后重发——全局 `[confirm] template` 可覆写（必须含 `{target}` 占位符，项目级覆写被拒绝）。四类工具皆可配：bash 用 `when.command`、path 工具用 `when.path`，匹配逻辑与其余 action 完全一致；单 target（一次拦截只有一个理由）。去重沿用内容寻址，键 `confirm:{target}`。
+
 ## 去重与状态
 
-- 会话级 `Set<string>`，key 为 `action + 内容标识`，**全部按内容寻址、与配置形式无关**：`file` 用相对配置目录解析出的绝对路径；`skill` 用 skill 名；`walkup` 用收集到的每个上下文文件的 realPath。多 trigger 指向同一目标只加载一次（参考 pi-rules 的 `injectedSingleFileRules` 模式）——默认 walkup `[AGENTS.md]` 与用户自定义 `walkup ["AGENTS.md","CONTEXT.md"]` 共存时，AGENTS.md 也只注入一次。walkup 按文件去重的推论：什么都没找到就什么都不记，后续事件自然重试；会话后期首次进入的目录，其中的上下文文件仍会加载（对齐 pi-rules dynamic 语义）
+- 会话级 `Set<string>`，key 为 `action + 内容标识`，**全部按内容寻址、与配置形式无关**：`file` 用相对配置目录解析出的绝对路径；`skill` 用 skill 名；`walkup` 用收集到的每个上下文文件的 realPath；`confirm` 用 target 文本，在 `tool_call` 内 claim——重发调用因键已占而直接放行，这正是「重试即执行」的实现。多 trigger 指向同一目标只加载一次（参考 pi-rules 的 `injectedSingleFileRules` 模式）——默认 walkup `[AGENTS.md]` 与用户自定义 `walkup ["AGENTS.md","CONTEXT.md"]` 共存时，AGENTS.md 也只注入一次。walkup 按文件去重的推论：什么都没找到就什么都不记，后续事件自然重试；会话后期首次进入的目录，其中的上下文文件仍会加载（对齐 pi-rules dynamic 语义）
 - `session_start`、`session_compact`、`/reload` 时清空（compact 后旧上下文已压缩，重新触发是对的）
 - 若 pi 原生 skill 加载自带幂等（如已加载 skill 不重复进上下文），去重仍保留——避免依赖内部实现细节
 

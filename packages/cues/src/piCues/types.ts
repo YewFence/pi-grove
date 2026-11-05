@@ -4,7 +4,7 @@
 
 export type ToolName = "bash" | "read" | "edit" | "write";
 
-export type ActionKind = "skill" | "file" | "walkup" | "inline" | "exec";
+export type ActionKind = "skill" | "file" | "walkup" | "inline" | "exec" | "confirm";
 
 /**
  * Raw shape of the pi-cues config file as authored by the user. This is the
@@ -18,8 +18,15 @@ export interface RawConfig {
   defaults?: boolean;
   /** Local telemetry settings. Only the global config's entry takes effect; project entries are ignored. */
   telemetry?: RawTelemetry;
+  /** Confirm-cue settings (prompt template override). */
+  confirm?: RawConfirm;
   /** Trigger entries. Global config provides the baseline; project config entries are appended. */
   triggers?: RawTrigger[];
+}
+
+export interface RawConfirm {
+  /** Override for the confirm prompt template. Must contain the `{target}` placeholder, which receives the trigger's target text. */
+  template?: string;
 }
 
 export interface RawTelemetry {
@@ -32,9 +39,9 @@ export interface RawTrigger {
   tools: ToolName[];
   /** Predicate. Required for skill/file; optional for walkup (omitted = every listed path event matches). */
   when?: RawWhen;
-  /** skill: inject a pi skill (full text). file: inject a prompt file (truncated). walkup: collect context files up to the session cwd. inline: inject the target text itself. exec: run the target as a shell command and inject its output (bash triggers only). */
+  /** skill: inject a pi skill (full text). file: inject a prompt file (truncated). walkup: collect context files up to the session cwd. inline: inject the target text itself. exec: run the target as a shell command and inject its output (bash triggers only). confirm: block the first matching call and deliver the target text as the block reason; a retry runs normally. */
   action: ActionKind;
-  /** skill: skill name(s). file: prompt file path(s), relative to the config directory (project configs must not escape it). walkup: context file name(s), e.g. AGENTS.md. inline: the literal markdown to inject. exec: the command line(s) to run, executed as-is through pi's bash tool with no placeholder interpolation. */
+  /** skill: skill name(s). file: prompt file path(s), relative to the config directory (project configs must not escape it). walkup: context file name(s), e.g. AGENTS.md. inline: the literal markdown to inject. exec: the command line(s) to run, executed as-is through pi's bash tool with no placeholder interpolation. confirm: the prompt text shown to the agent when the call is blocked (a single string). */
   target: string | string[];
   /** walkup only: picomatch patterns matched against the collected file's path relative to the session cwd (POSIX separators). "README.md" matches only the cwd-level file; use a globstar pattern to match any depth. A leading bang (exclamation) prefix is rejected. */
   exclude?: string | string[];

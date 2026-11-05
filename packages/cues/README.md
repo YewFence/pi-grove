@@ -4,7 +4,7 @@
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://YewFence.github.io/pi-grove/)
 [![License](https://img.shields.io/github/license/YewFence/pi-grove)](LICENSE)
 
-Deterministic context loading for the pi coding agent: a central trigger table maps bash commands and tool-operated file paths to skills and prompt files
+Deterministic context loading for the pi coding agent: a central trigger table maps bash commands and tool-operated file paths to skills, prompt files, and pre-execution confirmation prompts
 
 > [!NOTE]
 > This project is in an early development stage. Core features may be missing, and backward compatibility is not guaranteed.
@@ -71,6 +71,20 @@ tools = ["bash"]
 when.command = "jj edit"
 action = "exec"
 target = "jj edit --help"
+
+# Running `docker build ...` the first time is BLOCKED before it executes:
+# the target text reaches the model as the block reason ("use the host
+# proxy"), it reads the note, adjusts if needed, and re-issues the call —
+# the retry runs normally. One interception per session per target; the
+# prompt frame (not executed / not a permission denial / adjust if needed)
+# is the builtin template, overridable once in the global config:
+#   [confirm]
+#   template = "... {target} ..."
+[[triggers]]
+tools = ["bash"]
+when.command = ["docker build", "docker buildx build", "docker compose build"]
+action = "confirm"
+target = "Build-time network egress (APT, pip, base image pulls) must go through the host proxy 127.0.0.1:7897; direct connections mostly fail."
 
 # Any path operation walks up to the session cwd collecting context files
 [[triggers]]

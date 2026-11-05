@@ -15,6 +15,7 @@ Length and judgment pick the form — decide before writing:
 - A paragraph or list of conventions → `action = "file"` plus a standalone `.md`
 - Always relevant, always resident → `AGENTS.md` (the builtin walkup cue already covers it; no trigger to write)
 - The right moment depends on context only the model can judge → a SKILL, whose description does the routing; cues carry deterministic triggers only
+- The note must arrive **before** the first execution, or that execution is already wrong (proxy settings, cost warnings, generated-file warnings) → `action = "confirm"`: the first matching call is blocked, the target text is the block reason, a retry runs normally
 
 ## Three principles
 

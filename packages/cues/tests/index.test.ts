@@ -415,6 +415,154 @@ describe("inline cue", () => {
   });
 });
 
+function bashCall(command: string): any {
+  return {
+    type: "tool_call",
+    toolCallId: "call-1",
+    toolName: "bash",
+    input: { command },
+  };
+}
+
+function editCall(filePath: string): any {
+  return {
+    type: "tool_call",
+    toolCallId: "call-2",
+    toolName: "edit",
+    input: { path: filePath },
+  };
+}
+
+function blockedReason(result: unknown): string | undefined {
+  return (result as { reason?: string } | undefined)?.reason;
+}
+
+describe("confirm cue", () => {
+  it("blocks the first matching bash call with the prompt as the reason", async () => {
+    // #given a confirm trigger on docker build #when the first call arrives #then blocked with envelope reason
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Build-time network needs the host proxy at 127.0.0.1:7897."\n`,
+    );
+    const handler = fake.handlers.get("tool_call");
+    const blocked = await handler?.(bashCall("docker build -t app ."), ctx);
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("pi-cues") as unknown,
+    });
+    expect(blockedReason(blocked)).toContain('action="confirm" trigger="command docker build"');
+    expect(blockedReason(blocked)).toContain("was not executed");
+    expect(blockedReason(blocked)).toContain("Build-time network needs the host proxy");
+    expect(fake.notices.some((n) => n.includes("confirm prompt shown"))).toBe(true);
+  });
+
+  it("lets the retried call through (dedup per session)", async () => {
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+    );
+    const handler = fake.handlers.get("tool_call");
+    expect(await handler?.(bashCall("docker build ."), ctx)).toBeDefined();
+    expect(await handler?.(bashCall("docker build ."), ctx)).toBeUndefined();
+    // A different target claims its own key
+    expect(
+      await handler?.(
+        {
+          type: "tool_call",
+          toolCallId: "call-3",
+          toolName: "bash",
+          input: { command: "cargo build" },
+        },
+        ctx,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("blocks the first matching path operation", async () => {
+    const { fake, project, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["edit"]\nwhen.path = "src/generated/**"\naction = "confirm"\ntarget = "This file is generated; hand edits are overwritten."\n`,
+    );
+    writeFile(join(project, "src", "generated", "api.ts"), "code");
+    const handler = fake.handlers.get("tool_call");
+    const blocked = await handler?.(editCall(join(project, "src", "generated", "api.ts")), ctx);
+    expect(blockedReason(blocked)).toContain("This file is generated");
+    expect(blockedReason(blocked)).toContain('trigger="path src/generated/api.ts"');
+    expect(
+      await handler?.(editCall(join(project, "src", "generated", "api.ts")), ctx),
+    ).toBeUndefined();
+  });
+
+  it("uses the global template override and replaces {target}", async () => {
+    const project = makeDir("pi-cues-it-project-");
+    const home = makeDir("pi-cues-it-home-");
+    writeFile(
+      join(home, ".pi", "agent", "extensions", "pi-cues", "config.toml"),
+      'version = 1\n[confirm]\ntemplate = "该调用未执行——请参考以下信息，必要时调整命令后重发：\\n\\n{target}"\n',
+    );
+    writeFile(
+      join(project, ".pi", "extensions", "pi-cues", "config.toml"),
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "用代理。"\n`,
+    );
+    process.env.HOME = home;
+    process.env["PI_CODING_AGENT_DIR"] = join(home, ".pi", "agent");
+    const fake = createFakePi();
+    piCues(fake.pi);
+    const ctx = {
+      cwd: project,
+      hasUI: true,
+      sessionManager: { getSessionId: () => "session-test-id" },
+      ui: { notify: fake.notify },
+    };
+    fake.handlers.get("session_start")?.({ type: "session_start" }, ctx);
+
+    const blocked = await fake.handlers.get("tool_call")?.(bashCall("docker build ."), ctx);
+    expect(blockedReason(blocked)).toContain("必要时调整命令后重发");
+    expect(blockedReason(blocked)).toContain("用代理。");
+    expect(blockedReason(blocked)).not.toContain("{target}");
+  });
+
+  it("does not re-block after the model re-issues, and the error result passes the tool_result gate", async () => {
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+    );
+    const callHandler = fake.handlers.get("tool_call");
+    expect(await callHandler?.(bashCall("docker build ."), ctx)).toBeDefined();
+    // The retry runs; pi surfaces its (successful) tool result — no error result, no cue.
+    expect(await callHandler?.(bashCall("docker build ."), ctx)).toBeUndefined();
+    const resultHandler = fake.handlers.get("tool_result");
+    expect(
+      await resultHandler?.(
+        {
+          ...bashResult("docker build ."),
+          isError: false,
+          content: [{ type: "text", text: "built" }],
+        },
+        ctx,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("records a telemetry event when blocking", async () => {
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+    );
+    await fake.handlers.get("tool_call")?.(bashCall("docker build ."), ctx);
+    const status = fake.commands.get("cues");
+    void status?.handler("status", ctx);
+    expect(fake.notices.at(-1)).toContain("confirm: Use the proxy.");
+  });
+
+  it("ignores calls whose tool is not in the trigger's tools", async () => {
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+    );
+    expect(
+      await fake.handlers.get("tool_call")?.(
+        { type: "tool_call", toolCallId: "c", toolName: "read", input: { path: "/tmp/x" } },
+        ctx,
+      ),
+    ).toBeUndefined();
+  });
+});
+
 describe("user_bash cues", () => {
   it("queues matched cues for the next turn instead of interrupting", async () => {
     const skillPath = join(makeDir("pi-cues-it-skill-"), "SKILL.md");

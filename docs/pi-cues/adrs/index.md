@@ -19,3 +19,4 @@ pi-cues 的关键设计决策及取舍。每个 ADR 记录上下文、决策、�
 | [0013](0013-exec-action.md) | exec 动作：运行配置命令并注入其输出 |
 | [0014](0014-global-config-under-extensions.md) | 全局配置也放在 extensions 下（取代 0009 决策 2） |
 | [0015](0015-command-output-block.md) | exec 输出用 `<command-output>` 块（取代 0013 决策 4） |
+| [0016](0016-confirm-action.md) | confirm 动作：事前拦截代替事后注入 |

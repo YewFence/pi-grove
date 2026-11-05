@@ -10,6 +10,20 @@ import type { ActionKind } from "./types.js";
 /** Verbatim first line of every envelope; never varies with the action. */
 export const ENVELOPE_NOTICE = "pi-cues: injected context, not tool output or user input.";
 
+/**
+ * Confirm prompts: what a blocked call's reason says. The template owns the
+ * retry semantics (not executed, not a permission denial, adjust if needed);
+ * `{target}` receives the trigger's own text. `{target}` is the only
+ * placeholder — a template with no placeholders would make the cue's text
+ * unreachable, and more placeholders invite template-engine creep.
+ */
+export const DEFAULT_CONFIRM_TEMPLATE =
+  "This call was not executed — this is a one-time confirmation prompt, not a permission denial; a retry will run normally. Read the note below, adjust the command if needed, then re-issue it.\n\n{target}";
+
+export function renderConfirmPrompt(template: string, target: string): string {
+  return template.replaceAll("{target}", target);
+}
+
 /** The envelope's own tag names; a `<` in front of them is escaped in bodies. */
 const ENVELOPE_TAGS = ["pi-cues", "file", "skill", "command-output"] as const;
 

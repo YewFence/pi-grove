@@ -18,7 +18,14 @@ import type { ActionKind, CueDiagnostic, ToolName, Trigger, TriggerWhen } from "
 
 const TOOL_NAMES: ReadonlySet<string> = new Set(["bash", "read", "edit", "write"]);
 const PATH_TOOL_NAMES: ReadonlySet<string> = new Set(["read", "edit", "write"]);
-const ACTION_NAMES: ReadonlySet<string> = new Set(["skill", "file", "walkup", "inline", "exec"]);
+const ACTION_NAMES: ReadonlySet<string> = new Set([
+  "skill",
+  "file",
+  "walkup",
+  "inline",
+  "exec",
+  "confirm",
+]);
 const WHEN_KEYS: ReadonlySet<string> = new Set(["command", "path"]);
 const CONFIG_VERSION = 1;
 
@@ -34,6 +41,8 @@ export interface LoadedConfig {
   projectUntrusted: boolean;
   /** False only when the global config sets `[telemetry] enabled = false`. Default true. */
   telemetry: boolean;
+  /** Confirm prompt template override from `[confirm] template`; undefined uses the builtin default. */
+  confirmTemplate?: string;
 }
 
 /**
@@ -85,6 +94,7 @@ export function loadConfig(options: LoadConfigOptions): LoadedConfig {
   );
   config.projectUntrusted = !projectLevel.trusted && projectLevel.file !== undefined;
   config.telemetry = globalLevel.telemetry !== false;
+  config.confirmTemplate = globalLevel.confirmTemplate;
   if (globalLevel.defaults && projectLevel.defaults) {
     config.triggers.push(...defaultTriggers(options.cwd));
   }
@@ -99,6 +109,8 @@ interface LevelResult {
   file: string | undefined;
   /** Explicit `[telemetry] enabled` from this level; undefined when absent or invalid. */
   telemetry: boolean | undefined;
+  /** Explicit `[confirm] template` from this level; undefined when absent or invalid. */
+  confirmTemplate: string | undefined;
 }
 
 function loadLevel(
@@ -113,6 +125,7 @@ function loadLevel(
     trusted,
     file: undefined,
     telemetry: undefined,
+    confirmTemplate: undefined,
   };
   const file = join(baseDir, ...CONFIG_SUBPATH);
   if (!existsSync(file)) {
@@ -142,14 +155,22 @@ function loadLevel(
       source: file,
       message: "Project is not trusted; config ignored",
     });
-    return { triggers: [], defaults: true, trusted, file, telemetry: undefined };
+    return {
+      triggers: [],
+      defaults: true,
+      trusted,
+      file,
+      telemetry: undefined,
+      confirmTemplate: undefined,
+    };
   }
   const defaults = defaultsValue !== false;
   const telemetry = parseTelemetry(parsed["telemetry"], file, scope, config);
+  const confirmTemplate = parseConfirmTemplate(parsed["confirm"], file, scope, config);
 
   const rawTriggers = parsed["triggers"];
   if (rawTriggers === undefined) {
-    return { triggers: [], defaults, trusted, file, telemetry };
+    return { triggers: [], defaults, trusted, file, telemetry, confirmTemplate };
   }
   if (!Array.isArray(rawTriggers)) {
     config.diagnostics.push({
@@ -157,7 +178,7 @@ function loadLevel(
       source: file,
       message: "`triggers` must be an array",
     });
-    return { triggers: [], defaults, trusted, file, telemetry };
+    return { triggers: [], defaults, trusted, file, telemetry, confirmTemplate };
   }
 
   const triggers: Trigger[] = [];
@@ -179,7 +200,7 @@ function loadLevel(
     }
     config.diagnostics.push(...result.diagnostics);
   }
-  return { triggers, defaults, trusted, file, telemetry };
+  return { triggers, defaults, trusted, file, telemetry, confirmTemplate };
 }
 
 /**
@@ -230,6 +251,60 @@ function parseTelemetry(
     return undefined;
   }
   return enabled;
+}
+
+/**
+ * The confirm prompt template: how a blocked call's reason is framed. Only
+ * the global config may override it — it is the agent owner's voice, not a
+ * cloned project's. Must contain `{target}`; otherwise rejected with a
+ * warning and the builtin default stays in effect.
+ */
+function parseConfirmTemplate(
+  value: unknown,
+  file: string,
+  scope: "global" | "project",
+  config: LoadedConfig,
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    config.diagnostics.push({
+      severity: "warning",
+      source: file,
+      message: "`confirm` must be a table",
+    });
+    return undefined;
+  }
+  const unknownKeys = Object.keys(value).filter((key) => key !== "template");
+  if (unknownKeys.length > 0) {
+    config.diagnostics.push({
+      severity: "warning",
+      source: file,
+      message: "`confirm` has unknown keys: " + unknownKeys.join(", "),
+    });
+  }
+  if (scope === "project") {
+    config.diagnostics.push({
+      severity: "warning",
+      source: file,
+      message: "`confirm` is only valid in the global config; ignored",
+    });
+    return undefined;
+  }
+  const template = value["template"];
+  if (template === undefined) {
+    return undefined;
+  }
+  if (typeof template !== "string" || !template.includes("{target}")) {
+    config.diagnostics.push({
+      severity: "warning",
+      source: file,
+      message: "`confirm.template` must be a string containing the {target} placeholder",
+    });
+    return undefined;
+  }
+  return template;
 }
 
 function parseConfigFile(file: string, config: LoadedConfig): Record<string, unknown> | undefined {
@@ -316,6 +391,10 @@ function validateTrigger(
   }
   if (actionKind === "exec" && !isRecord(raw["when"])) {
     return reject("exec triggers require when.command");
+  }
+  if (actionKind === "confirm" && targets.length > 1) {
+    // One block reason per blocked call; several targets have no order to pick by.
+    return reject("confirm triggers accept a single target");
   }
 
   const excludes = parseExcludes(raw["exclude"], actionKind);
