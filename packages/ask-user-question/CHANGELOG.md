@@ -1,3 +1,7 @@
+## What's Changed in ask-user-question-v0.1.0
+
+- harden TypeScript and repository checks
+
 # Changelog
 
 All notable changes to `@juicesharp/rpiv-ask-user-question` are documented here.
