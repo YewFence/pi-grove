@@ -10,7 +10,7 @@ git-cliff = "2"
 pinact = "4"
 jactionlint = "2"
 "github:suzuki-shunsuke/nllint" = "1"
-typos = "1.48.0"
+typos = "1.52.0"
 betterleaks = "1"
 
 [env]
