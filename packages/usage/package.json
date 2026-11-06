@@ -36,7 +36,7 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "engines": {
-    "node": ">=26"
+    "node": ">=26.13.0"
   },
   "pi": {
     "extensions": [
