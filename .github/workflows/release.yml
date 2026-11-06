@@ -44,7 +44,7 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha || inputs.tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           install_args: node aube git-cliff packslip:github.com/YewFence/actions/josh
@@ -75,7 +75,7 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.commit }}
           fetch-depth: 0
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           cache: false
