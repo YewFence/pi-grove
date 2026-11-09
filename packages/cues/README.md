@@ -98,7 +98,7 @@ target = ["AGENTS.md", "CLAUDE.md"]
 exclude = ["README.md"]
 ```
 
-Each target fires at most once per session (reset on compaction). Every firing pops a toast notification (`pi-cues: injected jj-cli (skill)`, or a warning when the target failed to load), so injections are visible as they happen instead of staying buried in the tool result block. `/cues status` shows the loaded config, diagnostics, and what has fired.
+Each target fires at most once per session (reset on compaction). Firings are recorded as session entries, so resuming a session does not re-inject cues already in the transcript. Every firing pops a toast notification (`pi-cues: injected jj-cli (skill)`, or a warning when the target failed to load), so injections are visible as they happen instead of staying buried in the tool result block. `/cues status` shows the loaded config, diagnostics, and what has fired.
 
 Every fired cue is also appended to `~/.cache/pi-cues/events.jsonl` (one JSON line per event: timestamp, pi session id, action, target, source, and whether it loaded) so you can confirm pi-cues is working after the session is gone — `tail -f` it while you work. The file rotates to `events.jsonl.1` past 2 MiB. Local only, never sent anywhere; opt out in the global config:
 

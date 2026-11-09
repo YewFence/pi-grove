@@ -7,6 +7,9 @@
  */
 import type { ActionKind, CueDiagnostic } from "./types.js";
 
+/** customType of the session entry pi-cues appends for each fired cue. */
+export const TRIGGERED_ENTRY_TYPE = "pi-cues-triggered";
+
 export interface TriggeredRecord {
   action: ActionKind;
   target: string;
@@ -14,6 +17,8 @@ export interface TriggeredRecord {
   source: string;
   /** False when the target was missing or failed to load (still deduped). */
   loaded: boolean;
+  /** Dedup key claimed by this firing; the identity persisted across resume. */
+  key: string;
 }
 
 export interface SessionState {
@@ -37,18 +42,74 @@ export function dedupKey(action: ActionKind, identity: string): string {
 export function claimOnce(
   state: SessionState,
   key: string,
-  record: TriggeredRecord,
+  record: Omit<TriggeredRecord, "key">,
 ): TriggeredRecord | undefined {
   if (state.dedup.has(key)) {
     return undefined;
   }
   state.dedup.add(key);
-  state.triggered.push(record);
-  return record;
+  const stored: TriggeredRecord = { ...record, key };
+  state.triggered.push(stored);
+  return stored;
 }
 
 export function clearSession(state: SessionState): void {
   state.dedup.clear();
   state.diagnostics.length = 0;
   state.triggered.length = 0;
+}
+
+const TRIGGERED_ACTIONS: readonly ActionKind[] = [
+  "skill",
+  "file",
+  "walkup",
+  "inline",
+  "exec",
+  "confirm",
+];
+
+/** Shape-check one persisted session entry; sessions can predate this format. */
+function triggeredEntryData(entry: unknown): TriggeredRecord | undefined {
+  if (typeof entry !== "object" || entry === null) {
+    return undefined;
+  }
+  const { type, customType, data } = entry as Record<string, unknown>;
+  if (type !== "custom" || customType !== TRIGGERED_ENTRY_TYPE) {
+    return undefined;
+  }
+  if (typeof data !== "object" || data === null) {
+    return undefined;
+  }
+  const { key, action, target, source, loaded } = data as Record<string, unknown>;
+  if (
+    typeof key !== "string" ||
+    typeof action !== "string" ||
+    typeof target !== "string" ||
+    typeof source !== "string" ||
+    typeof loaded !== "boolean" ||
+    !TRIGGERED_ACTIONS.includes(action as ActionKind)
+  ) {
+    return undefined;
+  }
+  return { key, action: action as ActionKind, target, source, loaded };
+}
+
+/**
+ * Rebuild dedup from custom entries on the active branch (session resume,
+ * reload, fork). The caller passes compaction-aware entries, so firings whose
+ * injections were compacted away re-fire — matching clearSession-on-compact.
+ * Returns how many records were restored.
+ */
+export function restoreFromEntries(state: SessionState, entries: readonly unknown[]): number {
+  let restored = 0;
+  for (const entry of entries) {
+    const record = triggeredEntryData(entry);
+    if (record === undefined || state.dedup.has(record.key)) {
+      continue;
+    }
+    state.dedup.add(record.key);
+    state.triggered.push(record);
+    restored += 1;
+  }
+  return restored;
 }

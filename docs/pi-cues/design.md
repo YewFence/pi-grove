@@ -21,7 +21,7 @@
 
 1. 两条触发管道：bash 命令启发式解析提取命令名；read/edit/write 工具事件提取操作路径
 2. 中央 trigger 表按 `tools` + `when` 谓词匹配，动作分五类：`skill` 经 pi 原生发现定位 SKILL.md 后自读全文注入；`file` 自己读取提示词文件注入正文；`walkup` 沿用 pi-rules 的 walk-up 上下文加载（对被操作文件从其目录向上收集 AGENTS.md 等上下文文件，与 pi 原生 `contextFiles` 去重后注入）；`inline` 把 target 文本本身作为内容注入（一句话级别的约定不值得独立成文件）；`exec` 把 target 当 shell 命令运行并在当次工具结果里注入输出（如 `jj edit --help`，见 ADR 0013）
-3. 会话级去重：每个加载目标只触发一次；compaction 后重置
+3. 会话级去重：每个加载目标只触发一次；compaction 后重置；命中记录为会话条目，resume 后重建（ADR 0017）
 4. 触发与注入契约参考 pi-rules：`tool_result` 返回新数组不就地突变、会话去重、正文截断预算
 5. 注入块有**唯一边界**：包在 `<pi-cues>…</pi-cues>` 信封里，模型能明确判断「注入从哪里开始、到哪里结束」，不会把注入内容当成工具输出（见「注入信封」）
 

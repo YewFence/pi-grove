@@ -20,7 +20,13 @@ function makeDir(prefix: string): string {
 }
 
 function record(): Parameters<typeof recordTriggeredEvent>[2] {
-  return { action: "skill", target: "jj-cli", source: "<builtin defaults>", loaded: true };
+  return {
+    action: "skill",
+    target: "jj-cli",
+    source: "<builtin defaults>",
+    loaded: true,
+    key: "skill:jj-cli",
+  };
 }
 
 function readEvents(cacheDir: string): TelemetryEvent[] {

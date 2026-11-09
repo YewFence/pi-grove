@@ -27,6 +27,8 @@ interface FakePi {
   /** Same toasts as `notices`, with their level: success and failure share the target label. */
   alerts: Array<{ message: string; type: string | undefined }>;
   notify: (message: string, type?: string) => void;
+  /** Custom entries appended via pi.appendEntry: the session's persistent storage. */
+  entries: any[];
 }
 
 function createFakePi(skillPaths: Record<string, string> = {}): FakePi {
@@ -40,6 +42,7 @@ function createFakePi(skillPaths: Record<string, string> = {}): FakePi {
       fake.notices.push(message);
       fake.alerts.push({ message, type });
     },
+    entries: [],
     pi: {
       on: (event: string, handler: any) => {
         fake.handlers.set(event, handler);
@@ -50,6 +53,9 @@ function createFakePi(skillPaths: Record<string, string> = {}): FakePi {
       },
       sendMessage: (message: any, options: any) => {
         fake.sent.push({ message, options });
+      },
+      appendEntry: (customType: string, data: any) => {
+        fake.entries.push({ type: "custom", customType, data });
       },
       getCommands: () =>
         Object.entries(skillPaths).map(([name, path]) => ({
@@ -103,7 +109,10 @@ function setup(configToml: string | null, skillPaths: Record<string, string> = {
   const ctx = {
     cwd: project,
     hasUI: true,
-    sessionManager: { getSessionId: () => "session-test-id" },
+    sessionManager: {
+      getSessionId: () => "session-test-id",
+      buildContextEntries: () => [...fake.entries],
+    },
     ui: { notify: fake.notify },
   };
   fake.handlers.get("session_start")?.({ type: "session_start" }, ctx);
@@ -261,7 +270,10 @@ describe("walkup cue", () => {
     const ctx = {
       cwd: project,
       hasUI: true,
-      sessionManager: { getSessionId: () => "session-test-id" },
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [],
+      },
       ui: { notify: fake.notify },
     };
     fake.handlers.get("session_start")?.({ type: "session_start" }, ctx);
@@ -286,7 +298,10 @@ describe("walkup cue", () => {
     const ctx = {
       cwd: project,
       hasUI: true,
-      sessionManager: { getSessionId: () => "session-test-id" },
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [],
+      },
       ui: { notify: fake.notify },
     };
     fake.handlers.get("session_start")?.({ type: "session_start" }, ctx);
@@ -508,7 +523,10 @@ describe("confirm cue", () => {
     const ctx = {
       cwd: project,
       hasUI: true,
-      sessionManager: { getSessionId: () => "session-test-id" },
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [],
+      },
       ui: { notify: fake.notify },
     };
     fake.handlers.get("session_start")?.({ type: "session_start" }, ctx);
@@ -613,7 +631,10 @@ describe("trust and attribution", () => {
       cwd: project,
       hasUI: true,
       isProjectTrusted: () => false,
-      sessionManager: { getSessionId: () => "session-test-id" },
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [],
+      },
       ui: { notify: fake.notify },
     };
     fake.handlers.get("session_start")?.({ type: "session_start" }, ctx);
@@ -735,6 +756,126 @@ describe("session lifecycle", () => {
     expect(injectedText(await handler?.(bashResult("jj log"), ctx))).toContain(
       '<skill name="jj-cli"',
     );
+  });
+
+  it("persists each firing as a custom session entry", async () => {
+    const skillPath = join(makeDir("pi-cues-it-skill-"), "SKILL.md");
+    writeFile(skillPath, "body");
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "skill"\ntarget = "jj-cli"\n`,
+      { "jj-cli": skillPath },
+    );
+
+    await fake.handlers.get("tool_result")?.(bashResult("jj log"), ctx);
+
+    expect(fake.entries).toHaveLength(1);
+    expect(fake.entries[0]).toMatchObject({
+      type: "custom",
+      customType: "pi-cues-triggered",
+      data: { action: "skill", target: "jj-cli", loaded: true },
+    });
+    expect(typeof fake.entries[0]?.data?.key).toBe("string");
+  });
+
+  it("restores dedup from session entries on resume, so cues do not re-inject", async () => {
+    // #given a session that already fired jj-cli and persisted its firing
+    const skillPath = join(makeDir("pi-cues-it-skill-"), "SKILL.md");
+    writeFile(skillPath, "body");
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "skill"\ntarget = "jj-cli"\n`,
+      { "jj-cli": skillPath },
+    );
+    await fake.handlers.get("tool_result")?.(bashResult("jj log"), ctx);
+
+    // #when pi rebuilds the extension instance for /resume (fresh closure,
+    // same session storage) and the command runs again
+    const resumed = createFakePi({ "jj-cli": skillPath });
+    piCues(resumed.pi);
+    const resumedCtx = {
+      cwd: ctx.cwd,
+      hasUI: true,
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [...fake.entries],
+      },
+      ui: { notify: resumed.notify },
+    };
+    resumed.handlers.get("session_start")?.(
+      { type: "session_start", reason: "resume" },
+      resumedCtx,
+    );
+
+    // #then the cue already in the transcript is not injected a second time
+    expect(
+      await resumed.handlers.get("tool_result")?.(bashResult("jj log"), resumedCtx),
+    ).toBeUndefined();
+    expect(resumed.entries).toHaveLength(0);
+  });
+
+  it("ignores persisted firings whose injection was compacted away", async () => {
+    // #given a session that fired jj-cli, compacted afterwards
+    const skillPath = join(makeDir("pi-cues-it-skill-"), "SKILL.md");
+    writeFile(skillPath, "body");
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "skill"\ntarget = "jj-cli"\n`,
+      { "jj-cli": skillPath },
+    );
+    await fake.handlers.get("tool_result")?.(bashResult("jj log"), ctx);
+
+    // #when the resumed session's context drops entries before the compaction
+    const resumed = createFakePi({ "jj-cli": skillPath });
+    piCues(resumed.pi);
+    const resumedCtx = {
+      cwd: ctx.cwd,
+      hasUI: true,
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        // buildContextEntries drops pre-compaction entries; only the
+        // compaction summary remains, carrying no pi-cues-triggered data
+        buildContextEntries: () => [{ type: "compaction", summary: "…", firstKeptEntryId: "c1" }],
+      },
+      ui: { notify: resumed.notify },
+    };
+    resumed.handlers.get("session_start")?.(
+      { type: "session_start", reason: "resume" },
+      resumedCtx,
+    );
+
+    // #then the cue fires again: its injection no longer sits in context
+    expect(
+      injectedText(await resumed.handlers.get("tool_result")?.(bashResult("jj log"), resumedCtx)),
+    ).toContain('<skill name="jj-cli"');
+  });
+
+  it("ignores malformed or foreign custom entries when restoring", async () => {
+    const { fake, ctx } = setup(null);
+    fake.entries.push(
+      { type: "custom", customType: "other-extension", data: { key: "skill:stolen" } },
+      { type: "custom", customType: "pi-cues-triggered", data: { key: 42 } },
+      { type: "custom", customType: "pi-cues-triggered", data: null },
+      { type: "message", message: { role: "user", content: "hi" } },
+      "not an entry",
+    );
+
+    const resumed = createFakePi();
+    piCues(resumed.pi);
+    const resumedCtx = {
+      cwd: ctx.cwd,
+      hasUI: true,
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [...fake.entries],
+      },
+      ui: { notify: resumed.notify },
+    };
+    resumed.handlers.get("session_start")?.({ type: "session_start" }, resumedCtx);
+
+    // #then nothing restored, and a fresh claim of the forged key still fires
+    expect(
+      injectedText(
+        await resumed.handlers.get("tool_result")?.({ ...bashResult("jj log") }, resumedCtx),
+      ),
+    ).toBeUndefined();
   });
 
   it("notifies config diagnostics on session start", async () => {

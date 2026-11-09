@@ -38,6 +38,8 @@ import {
   clearSession,
   createSessionState,
   dedupKey,
+  restoreFromEntries,
+  TRIGGERED_ENTRY_TYPE,
   type SessionState,
   type TriggeredRecord,
 } from "./triggers.js";
@@ -94,6 +96,12 @@ export default function piCues(pi: ExtensionAPI): void {
     session.cwd = ctx.cwd;
     walkupCache.entries.clear();
     sessionId = ctx.sessionManager.getSessionId();
+    // Pi tears extension instances down on /resume /new /fork and reload, so
+    // the previous process's in-memory dedup is gone. Rebuild it from the
+    // custom entries this extension appended, or a resumed session re-injects
+    // cues already sitting in the transcript (ADR 0017). buildContextEntries
+    // is compaction-aware, aligning the restore with compact's re-fire rule.
+    restoreFromEntries(session, ctx.sessionManager.buildContextEntries());
     const agentDir = resolveAgentDir();
     config = loadConfig({
       cwd: ctx.cwd,
@@ -266,7 +274,7 @@ export default function piCues(pi: ExtensionAPI): void {
       if (record === undefined) {
         continue;
       }
-      logTelemetry(record);
+      recordFiring(record);
       const prompt = renderConfirmPrompt(confirmTemplate, target);
       return {
         result: {
@@ -393,7 +401,7 @@ export default function piCues(pi: ExtensionAPI): void {
         record.source,
       );
     }
-    logTelemetry(record);
+    recordFiring(record);
     return delivery === "inline" ? envelope : null;
   }
 
@@ -530,7 +538,7 @@ export default function piCues(pi: ExtensionAPI): void {
       if (record === undefined) {
         return null;
       }
-      logTelemetry(record);
+      recordFiring(record);
       // No inner element: `source` answers "where do I edit this sentence?".
       return formatEnvelope(
         { action: "inline", trigger: triggerLabel, source: trigger.source },
@@ -552,11 +560,11 @@ export default function piCues(pi: ExtensionAPI): void {
       const block = skill === null ? null : loadSkillBlock(skill);
       if (block === null) {
         diagnose(`Skill not found or unreadable: ${target}`, trigger.source);
-        logTelemetry(record);
+        recordFiring(record);
         return null;
       }
       record.loaded = true;
-      logTelemetry(record);
+      recordFiring(record);
       // Skill bodies are injected in full: no truncation budget (ADR 0003).
       return formatEnvelope({ action: "skill", trigger: triggerLabel }, block);
     }
@@ -577,11 +585,11 @@ export default function piCues(pi: ExtensionAPI): void {
         body = readFileSync(path, "utf8");
       } catch {
         diagnose(`Prompt file not found or unreadable: ${path}`, trigger.source);
-        logTelemetry(record);
+        recordFiring(record);
         return null;
       }
       record.loaded = true;
-      logTelemetry(record);
+      recordFiring(record);
       const meta = { action: "file" as const, trigger: triggerLabel };
       const content = formatFileBlock([{ path, body }], bodyBudget(meta));
       return content === "" ? null : formatEnvelope(meta, content);
@@ -620,11 +628,11 @@ export default function piCues(pi: ExtensionAPI): void {
         body = readFileSync(file.path, "utf8");
       } catch {
         diagnose(`Context file unreadable: ${file.path}`, source);
-        logTelemetry(record);
+        recordFiring(record);
         continue;
       }
       record.loaded = true;
-      logTelemetry(record);
+      recordFiring(record);
       contents.push({ path: file.path, body });
     }
 
@@ -643,6 +651,22 @@ export default function piCues(pi: ExtensionAPI): void {
 
   function diagnose(message: string, source: string): void {
     session.diagnostics.push({ severity: "warning", source, message });
+  }
+
+  /**
+   * Record one settled firing: persist it as a custom entry so a resumed
+   * session restores its dedup, then append the telemetry event. Called once
+   * per claim, always after `loaded` has its final value.
+   */
+  function recordFiring(record: TriggeredRecord): void {
+    pi.appendEntry(TRIGGERED_ENTRY_TYPE, {
+      key: record.key,
+      action: record.action,
+      target: record.target,
+      source: record.source,
+      loaded: record.loaded,
+    });
+    logTelemetry(record);
   }
 
   /** Local cache sink for "did pi-cues actually fire?"; failures are swallowed inside. */
