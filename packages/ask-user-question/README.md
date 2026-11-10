@@ -16,6 +16,6 @@ After publication, install with `pi install npm:@pi-grove/ask-user-question`. Fo
 
 `maxQuestions` defaults to four; zero removes the maximum. `collapseKey` defaults to `ctrl+]`; `off` disables it. `guidance.description`, `guidance.promptSnippet`, and `guidance.promptGuidelines` override the model-facing text. Invalid fields use their defaults; malformed files produce a warning. Changes take effect after restarting pi.
 
-The UI uses English. Configuration and internationalization no longer depend on the upstream rpiv packages. This fork was extracted from juicesharp's MIT-licensed rpiv-mono questionnaire at 2.12.0; the original copyright is retained in LICENSE. Its independent pi-grove version begins at 0.1.0. Public event contracts remain available through the `./events` export.
+The UI uses English. Configuration and internationalization no longer depend on the upstream rpiv packages. This fork was extracted from juicesharp's MIT-licensed rpiv-mono questionnaire at [2.12.0](https://github.com/juicesharp/rpiv-mono/tree/v2.12.0/packages/rpiv-ask-user-question); the original copyright is retained in LICENSE and the fork origin is recorded in NOTICE. Its independent pi-grove version begins at 0.1.0. Public event contracts remain available through the `./events` export.
 
 Run checks from the pi-grove root with `mise run check`. Keyboard, host, and tool schema details are in this package's `docs/` directory.

@@ -1,0 +1,10 @@
+@pi-grove/ask-user-question
+
+This package is a fork of rpiv-ask-user-question from juicesharp's rpiv-mono
+(https://github.com/juicesharp/rpiv-mono), MIT License, Copyright (c) 2026 juicesharp,
+forked at tag v2.12.0
+(https://github.com/juicesharp/rpiv-mono/tree/v2.12.0/packages/rpiv-ask-user-question).
+Upstream history before the fork lives in the upstream repository.
+
+The pi-coding-agent host is by Mario Zechner (https://github.com/earendil-works/pi),
+distributed under the MIT License.
