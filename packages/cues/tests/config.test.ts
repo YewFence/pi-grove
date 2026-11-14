@@ -259,6 +259,95 @@ exclude = "x.md"
   });
 });
 
+describe("policy", () => {
+  it("defaults to once", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "inline"\ntarget = "note"\n`,
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.triggers[1]?.policy).toBe("once");
+    expect(config.diagnostics).toEqual([]);
+  });
+
+  it("parses repeat and confirm policies", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": `version = 1
+[[triggers]]
+tools = ["bash"]
+when.command = "jj"
+action = "exec"
+target = "jj --help"
+policy = "repeat"
+
+[[triggers]]
+tools = ["bash"]
+when.command = "docker build"
+action = "inline"
+target = "Use the proxy."
+policy = "confirm"
+`,
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.triggers.map((t) => [t.action, t.policy])).toEqual([
+      ["walkup", "once"],
+      ["exec", "repeat"],
+      ["inline", "confirm"],
+    ]);
+    expect(config.diagnostics).toEqual([]);
+  });
+
+  it("rejects the removed action = confirm with a migration pointer", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "confirm"\ntarget = "note"\n`,
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.triggers.map((t) => t.source)).toEqual(["<builtin defaults>"]);
+    expect(
+      config.diagnostics.some((d) => d.message.includes('action = "inline" + policy = "confirm"')),
+    ).toBe(true);
+  });
+
+  it("rejects unknown policy values", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "inline"\ntarget = "note"\npolicy = "always"\n`,
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.triggers.map((t) => t.source)).toEqual(["<builtin defaults>"]);
+    expect(config.diagnostics.some((d) => d.message.includes("Invalid policy"))).toBe(true);
+  });
+
+  it("rejects walkup with policy = repeat", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": `version = 1\n[[triggers]]\ntools = ["read"]\naction = "walkup"\ntarget = "AGENTS.md"\npolicy = "repeat"\n`,
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.triggers.map((t) => t.source)).toEqual(["<builtin defaults>"]);
+    expect(
+      config.diagnostics.some((d) =>
+        d.message.includes('walkup triggers support policy = "once" only'),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects policy = confirm on actions other than inline", () => {
+    const project = makeTree({
+      ".pi/extensions/pi-cues/config.toml": `version = 1
+[[triggers]]
+tools = ["bash"]
+when.command = "jj"
+action = "file"
+target = "jj.md"
+policy = "confirm"
+`,
+    });
+    const config = loadConfig({ cwd: project, agentDir: makeAgentDir() });
+    expect(config.triggers.map((t) => t.source)).toEqual(["<builtin defaults>"]);
+    expect(
+      config.diagnostics.some((d) => d.message.includes('pairs with action = "inline" only')),
+    ).toBe(true);
+  });
+});
+
 describe("confirm settings", () => {
   it("defaults to the builtin template", () => {
     const home = makeTree({ ".pi/agent/extensions/pi-cues/config.toml": VALID });
@@ -300,10 +389,10 @@ describe("confirm settings", () => {
   it("rejects a confirm trigger with multiple targets", () => {
     const home = makeTree({
       ".pi/agent/extensions/pi-cues/config.toml":
-        'version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "confirm"\ntarget = ["a", "b"]\n',
+        'version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "inline"\npolicy = "confirm"\ntarget = ["a", "b"]\n',
     });
     const config = loadConfig({ cwd: makeTree({}), agentDir: join(home, ".pi", "agent") });
-    expect(config.triggers.some((t) => t.action === "confirm")).toBe(false);
+    expect(config.triggers.every((t) => t.policy !== "confirm")).toBe(true);
     expect(config.diagnostics.some((d) => d.message.includes("single target"))).toBe(true);
   });
 });

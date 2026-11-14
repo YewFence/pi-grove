@@ -2,8 +2,14 @@
   "$ref": "#/definitions/RawConfig",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "ActionKind": {
-      "enum": ["skill", "file", "walkup", "inline", "exec", "confirm"],
+    "ConfigAction": {
+      "description": "How the target materializes into cue text (config level).",
+      "enum": ["skill", "file", "walkup", "inline", "exec"],
+      "type": "string"
+    },
+    "CuePolicy": {
+      "description": "How a matched trigger is dispatched: once: inject after the first match per session. repeat: inject after every match. confirm: intercept before the first execution.",
+      "enum": ["once", "repeat", "confirm"],
       "type": "string"
     },
     "RawConfig": {
@@ -62,8 +68,8 @@
       "additionalProperties": false,
       "properties": {
         "action": {
-          "$ref": "#/definitions/ActionKind",
-          "description": "skill: inject a pi skill (full text). file: inject a prompt file (truncated). walkup: collect context files up to the session cwd. inline: inject the target text itself. exec: run the target as a shell command and inject its output (bash triggers only). confirm: block the first matching call and deliver the target text as the block reason; a retry runs normally."
+          "$ref": "#/definitions/ConfigAction",
+          "description": "What the target materializes into: skill: inject a pi skill (full text). file: inject a prompt file (truncated). walkup: collect context files up to the session cwd. inline: inject the target text itself. exec: run the target as a shell command and inject its output (bash triggers only). The former `confirm` action is now action = \"inline\" + policy = \"confirm\"."
         },
         "exclude": {
           "anyOf": [
@@ -79,6 +85,10 @@
           ],
           "description": "walkup only: picomatch patterns matched against the collected file's path relative to the session cwd (POSIX separators). \"README.md\" matches only the cwd-level file; use a globstar pattern to match any depth. A leading bang (exclamation) prefix is rejected."
         },
+        "policy": {
+          "$ref": "#/definitions/CuePolicy",
+          "description": "once: at most one firing per session (default). repeat: fire on every match (exec re-runs its command each time). confirm: block the first matching call and deliver the target text as the block reason; a retry runs normally; pairs with action = \"inline\" only."
+        },
         "target": {
           "anyOf": [
             {
@@ -91,7 +101,7 @@
               "type": "array"
             }
           ],
-          "description": "skill: skill name(s). file: prompt file path(s), relative to the config directory (project configs must not escape it). walkup: context file name(s), e.g. AGENTS.md. inline: the literal markdown to inject. exec: the command line(s) to run, executed as-is through pi's bash tool with no placeholder interpolation. confirm: the prompt text shown to the agent when the call is blocked (a single string)."
+          "description": "skill: skill name(s). file: prompt file path(s), relative to the config directory (project configs must not escape it). walkup: context file name(s), e.g. AGENTS.md. inline: the literal markdown to inject, or with policy = \"confirm\" the prompt shown as the block reason (a single string). exec: the command line(s) to run, executed as-is through pi's bash tool with no placeholder interpolation."
         },
         "tools": {
           "description": "Tool events this trigger listens to. `bash` pairs with when.command; read/edit/write pair with when.path.",

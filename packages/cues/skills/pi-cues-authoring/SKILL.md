@@ -15,7 +15,8 @@ Length and judgment pick the form — decide before writing:
 - A paragraph or list of conventions → `action = "file"` plus a standalone `.md`
 - Always relevant, always resident → `AGENTS.md` (the builtin walkup cue already covers it; no trigger to write)
 - The right moment depends on context only the model can judge → a SKILL, whose description does the routing; cues carry deterministic triggers only
-- The note must arrive **before** the first execution, or that execution is already wrong (proxy settings, cost warnings, generated-file warnings) → `action = "confirm"`: the first matching call is blocked, the target text is the block reason, a retry runs normally
+- The note must arrive **before** the first execution, or that execution is already wrong (proxy settings, cost warnings, generated-file warnings) → `action = "inline"` + `policy = "confirm"`: the first matching call is blocked, the target text is the block reason, a retry runs normally
+- The reminder must survive long sessions — one injection gets buried as context grows → add `policy = "repeat"`: every match re-injects (keep the text short; every injection spends context budget, and an `exec` cue re-runs its command each time)
 
 ## Three principles
 

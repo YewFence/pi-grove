@@ -52,12 +52,14 @@ when.path = "src/**/*.test.ts"
 action = "file"
 target = "./triggers/vitest.md"
 
-# Running `jj ...` reminds the agent of a one-line convention — no file needed
+# Running `jj ...` reminds the agent of a one-line convention — no file needed.
+# policy = "repeat" re-injects on every match instead of once per session
 [[triggers]]
 tools = ["bash"]
 when.command = "jj"
 action = "inline"
 target = "Write commit messages in Chinese."
+policy = "repeat"
 
 # Running `jj ...` runs a command and injects its output — the classic case
 # is pulling the exact help text of the subcommand in play. when.command
@@ -83,7 +85,8 @@ target = "jj edit --help"
 [[triggers]]
 tools = ["bash"]
 when.command = ["docker build", "docker buildx build", "docker compose build"]
-action = "confirm"
+action = "inline"
+policy = "confirm"
 target = "Build-time network egress (APT, pip, base image pulls) must go through the host proxy 127.0.0.1:7897; direct connections mostly fail."
 
 # Any path operation walks up to the session cwd collecting context files
@@ -98,7 +101,7 @@ target = ["AGENTS.md", "CLAUDE.md"]
 exclude = ["README.md"]
 ```
 
-Each target fires at most once per session (reset on compaction). Firings are recorded as session entries, so resuming a session does not re-inject cues already in the transcript. Every firing pops a toast notification (`pi-cues: injected jj-cli (skill)`, or a warning when the target failed to load), so injections are visible as they happen instead of staying buried in the tool result block. `/cues status` shows the loaded config, diagnostics, and what has fired.
+Two orthogonal knobs shape each trigger: `action` picks what the target materializes into (`skill`, `file`, `walkup`, `inline`, `exec`), and `policy` picks when it fires — `once` (default): inject after the first matching call per session; `repeat`: inject after every matching call (an `exec` cue re-runs its command each time); `confirm`: intercept the first matching call before it executes and hand the target text to the model as the block reason (pairs with `action = "inline"` only, single target). Every target fires at most once per session under the default policy (reset on compaction); repeated firings of a `repeat` trigger are visible in `/cues status` (counted per firing) and in the local event log. Firings are recorded as session entries, so resuming a session does not re-inject cues already in the transcript. Every firing pops a toast notification (`pi-cues: injected jj-cli (skill)`, or a warning when the target failed to load), so injections are visible as they happen instead of staying buried in the tool result block. `/cues status` shows the loaded config, diagnostics, and what has fired.
 
 Every fired cue is also appended to `~/.cache/pi-cues/events.jsonl` (one JSON line per event: timestamp, pi session id, action, target, source, and whether it loaded) so you can confirm pi-cues is working after the session is gone — `tail -f` it while you work. The file rotates to `events.jsonl.1` past 2 MiB. Local only, never sent anywhere; opt out in the global config:
 

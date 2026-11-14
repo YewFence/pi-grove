@@ -26,6 +26,7 @@ function record(): Parameters<typeof recordTriggeredEvent>[2] {
     source: "<builtin defaults>",
     loaded: true,
     key: "skill:jj-cli",
+    first: true,
   };
 }
 

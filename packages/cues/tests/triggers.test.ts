@@ -23,6 +23,18 @@ describe("claimOnce", () => {
     claimOnce(state, dedupKey("skill", "mise"), { ...record, action: "skill", target: "mise" });
     expect(claimOnce(state, dedupKey("file", "mise"), record)).toBeDefined();
   });
+
+  it("returns a non-persisting re-firing record for repeat claims", () => {
+    const state = createSessionState();
+    const inlineRecord = { ...record, action: "inline" as const, target: "note" };
+    const first = claimOnce(state, dedupKey("inline", "note"), inlineRecord);
+    expect(first?.first).toBe(true);
+    const refired = claimOnce(state, dedupKey("inline", "note"), inlineRecord, true);
+    expect(refired?.first).toBe(false);
+    expect(state.dedup.size).toBe(1);
+    // Both firings show up in the session log; persistence is the caller's call.
+    expect(state.triggered).toHaveLength(2);
+  });
 });
 
 describe("clearSession", () => {
@@ -34,7 +46,7 @@ describe("clearSession", () => {
   });
 });
 
-const persisted = triggeredEntry({ ...record, key: dedupKey("file", "/x.md") });
+const persisted = triggeredEntry({ ...record, key: dedupKey("file", "/x.md"), first: true });
 
 function triggeredEntry(data: unknown): { type: string; customType: string; data: unknown } {
   return { type: "custom", customType: "pi-cues-triggered", data };

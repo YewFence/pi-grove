@@ -4,7 +4,14 @@
 
 export type ToolName = "bash" | "read" | "edit" | "write";
 
-export type ActionKind = "skill" | "file" | "walkup" | "inline" | "exec" | "confirm";
+/** How the target materializes into cue text (config level). */
+export type ConfigAction = "skill" | "file" | "walkup" | "inline" | "exec";
+
+/** How a matched trigger is dispatched: once: inject after the first match per session. repeat: inject after every match. confirm: intercept before the first execution. */
+export type CuePolicy = "once" | "repeat" | "confirm";
+
+/** Runtime cue kinds: the five config actions plus the internal `confirm` interception. */
+export type ActionKind = ConfigAction | "confirm";
 
 /**
  * Raw shape of the pi-cues config file as authored by the user. This is the
@@ -39,9 +46,11 @@ export interface RawTrigger {
   tools: ToolName[];
   /** Predicate. Required for skill/file; optional for walkup (omitted = every listed path event matches). */
   when?: RawWhen;
-  /** skill: inject a pi skill (full text). file: inject a prompt file (truncated). walkup: collect context files up to the session cwd. inline: inject the target text itself. exec: run the target as a shell command and inject its output (bash triggers only). confirm: block the first matching call and deliver the target text as the block reason; a retry runs normally. */
-  action: ActionKind;
-  /** skill: skill name(s). file: prompt file path(s), relative to the config directory (project configs must not escape it). walkup: context file name(s), e.g. AGENTS.md. inline: the literal markdown to inject. exec: the command line(s) to run, executed as-is through pi's bash tool with no placeholder interpolation. confirm: the prompt text shown to the agent when the call is blocked (a single string). */
+  /** What the target materializes into: skill: inject a pi skill (full text). file: inject a prompt file (truncated). walkup: collect context files up to the session cwd. inline: inject the target text itself. exec: run the target as a shell command and inject its output (bash triggers only). The former `confirm` action is now action = "inline" + policy = "confirm". */
+  action: ConfigAction;
+  /** once: at most one firing per session (default). repeat: fire on every match (exec re-runs its command each time). confirm: block the first matching call and deliver the target text as the block reason; a retry runs normally; pairs with action = "inline" only. */
+  policy?: CuePolicy;
+  /** skill: skill name(s). file: prompt file path(s), relative to the config directory (project configs must not escape it). walkup: context file name(s), e.g. AGENTS.md. inline: the literal markdown to inject, or with policy = "confirm" the prompt shown as the block reason (a single string). exec: the command line(s) to run, executed as-is through pi's bash tool with no placeholder interpolation. */
   target: string | string[];
   /** walkup only: picomatch patterns matched against the collected file's path relative to the session cwd (POSIX separators). "README.md" matches only the cwd-level file; use a globstar pattern to match any depth. A leading bang (exclamation) prefix is rejected. */
   exclude?: string | string[];
@@ -70,7 +79,9 @@ export interface Trigger {
   tools: ToolName[];
   /** Undefined only for walkup triggers (match every listed tool event). */
   when?: TriggerWhen;
-  action: ActionKind;
+  action: ConfigAction;
+  /** once: at most one firing per session; repeat: fire on every match; confirm: pre-execution interception in tool_call. */
+  policy: CuePolicy;
   targets: string[];
   /** walkup only: picomatch patterns matched against the anchor-relative POSIX path of collected files. */
   excludes: string[];

@@ -19,6 +19,8 @@ export interface TriggeredRecord {
   loaded: boolean;
   /** Dedup key claimed by this firing; the identity persisted across resume. */
   key: string;
+  /** True on a repeat-policy trigger's first firing; false on later re-firings, which claim no dedup key and persist no session entry. */
+  first: boolean;
 }
 
 export interface SessionState {
@@ -37,18 +39,26 @@ export function dedupKey(action: ActionKind, identity: string): string {
 
 /**
  * Record `key` as fired. Returns the stored record on the first firing,
- * undefined when the key was already claimed.
+ * undefined when the key was already claimed. With `repeat`, an already
+ * claimed key instead returns a non-persisting re-firing record (`first:
+ * false`) — the caller injects again but writes no session entry.
  */
 export function claimOnce(
   state: SessionState,
   key: string,
-  record: Omit<TriggeredRecord, "key">,
+  record: Omit<TriggeredRecord, "key" | "first">,
+  repeat = false,
 ): TriggeredRecord | undefined {
   if (state.dedup.has(key)) {
-    return undefined;
+    if (!repeat) {
+      return undefined;
+    }
+    const refired: TriggeredRecord = { ...record, key, first: false };
+    state.triggered.push(refired);
+    return refired;
   }
   state.dedup.add(key);
-  const stored: TriggeredRecord = { ...record, key };
+  const stored: TriggeredRecord = { ...record, key, first: true };
   state.triggered.push(stored);
   return stored;
 }
@@ -91,7 +101,9 @@ function triggeredEntryData(entry: unknown): TriggeredRecord | undefined {
   ) {
     return undefined;
   }
-  return { key, action: action as ActionKind, target, source, loaded };
+  // `first` is absent from entries persisted before it existed; a persisted
+  // firing is always the first one by construction.
+  return { key, action: action as ActionKind, target, source, loaded, first: true };
 }
 
 /**

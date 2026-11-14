@@ -14,18 +14,19 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
 
-import type { ActionKind, CueDiagnostic, ToolName, Trigger, TriggerWhen } from "./types.js";
+import type {
+  ConfigAction,
+  CueDiagnostic,
+  CuePolicy,
+  ToolName,
+  Trigger,
+  TriggerWhen,
+} from "./types.js";
 
 const TOOL_NAMES: ReadonlySet<string> = new Set(["bash", "read", "edit", "write"]);
 const PATH_TOOL_NAMES: ReadonlySet<string> = new Set(["read", "edit", "write"]);
-const ACTION_NAMES: ReadonlySet<string> = new Set([
-  "skill",
-  "file",
-  "walkup",
-  "inline",
-  "exec",
-  "confirm",
-]);
+const ACTION_NAMES: ReadonlySet<string> = new Set(["skill", "file", "walkup", "inline", "exec"]);
+const POLICY_NAMES: ReadonlySet<string> = new Set(["once", "repeat", "confirm"]);
 const WHEN_KEYS: ReadonlySet<string> = new Set(["command", "path"]);
 const CONFIG_VERSION = 1;
 
@@ -56,6 +57,7 @@ function defaultTriggers(cwd: string): Trigger[] {
       tools: ["read", "edit", "write"],
       when: undefined,
       action: "walkup",
+      policy: "once",
       targets: ["AGENTS.md"],
       excludes: [],
       configDir: cwd,
@@ -358,10 +360,19 @@ function validateTrigger(
   }
 
   const action = raw["action"];
+  if (action === "confirm") {
+    return reject('action = "confirm" was replaced by action = "inline" + policy = "confirm"');
+  }
   if (typeof action !== "string" || !ACTION_NAMES.has(action)) {
     return reject(`Invalid action: ${JSON.stringify(raw["action"])}`);
   }
-  const actionKind = action as ActionKind;
+  const actionKind = action as ConfigAction;
+
+  const rawPolicy = raw["policy"];
+  if (rawPolicy !== undefined && (typeof rawPolicy !== "string" || !POLICY_NAMES.has(rawPolicy))) {
+    return reject(`Invalid policy: ${JSON.stringify(raw["policy"])}`);
+  }
+  const policy = (rawPolicy ?? "once") as CuePolicy;
 
   const targets = parseStringList(raw["target"]);
   if (targets === undefined || targets.length === 0) {
@@ -392,7 +403,17 @@ function validateTrigger(
   if (actionKind === "exec" && !isRecord(raw["when"])) {
     return reject("exec triggers require when.command");
   }
-  if (actionKind === "confirm" && targets.length > 1) {
+  if (actionKind === "walkup" && policy === "repeat") {
+    // Walkup dedups per collected-file realPath across triggers (ADR 0005);
+    // re-firing it per event has no meaning.
+    return reject('walkup triggers support policy = "once" only');
+  }
+  if (policy === "confirm" && actionKind !== "inline") {
+    // The confirm prompt is the trigger's own literal text; file/skill/exec
+    // materialization for blocked calls may come later, not in v1.
+    return reject('policy = "confirm" pairs with action = "inline" only');
+  }
+  if (policy === "confirm" && targets.length > 1) {
     // One block reason per blocked call; several targets have no order to pick by.
     return reject("confirm triggers accept a single target");
   }
@@ -408,13 +429,22 @@ function validateTrigger(
   }
 
   return {
-    trigger: { tools, when: when.when, action: actionKind, targets, excludes, configDir, source },
+    trigger: {
+      tools,
+      when: when.when,
+      action: actionKind,
+      policy,
+      targets,
+      excludes,
+      configDir,
+      source,
+    },
     diagnostics: [],
   };
 }
 
 /** Returns parsed patterns, or an error message when the entry is invalid. */
-function parseExcludes(value: unknown, action: ActionKind): string[] | string {
+function parseExcludes(value: unknown, action: ConfigAction): string[] | string {
   if (value === undefined) {
     return [];
   }
@@ -463,7 +493,7 @@ function parseStringList(value: unknown): string[] | undefined {
 
 type WhenValidation = { ok: true; when: TriggerWhen | undefined } | { ok: false };
 
-function parseWhen(value: unknown, tools: ToolName[], action: ActionKind): WhenValidation {
+function parseWhen(value: unknown, tools: ToolName[], action: ConfigAction): WhenValidation {
   if (value === undefined) {
     // Only walkup may omit `when`: every listed path event triggers it.
     return action === "walkup" ? { ok: true, when: undefined } : { ok: false };

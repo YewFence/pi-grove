@@ -45,16 +45,17 @@ flowchart LR
     B --> C["按 tools 过滤 trigger\n按 when 谓词匹配"]
     C --> D{"命中?"}
     D -- 否 --> X[无操作]
-    D -- 是 --> E{"会话内已触发\n该目标?"}
-    E -- 是 --> X
-    E -- 否 --> F{"action"}
+    D -- 是 --> E{"policy 与
+会话内已触发?"}
+    E -- "once 且已触发" --> X
+    E -- "once 首次 / repeat" --> F{"action"}
     F -- skill --> G["自读 SKILL.md\n剥 frontmatter 全文注入"]
     F -- file --> H["读取提示词文件\n截断后注入正文"]
     F -- walkup --> H2["walk-up 收集上下文文件\n查缓存/去重后注入"]
-    G --> I["记录去重"]
+    G --> I["记录去重（repeat 仅首次持久化）"]
     H --> I
     H2 --> I
-    F -- confirm --> F2["tool_call 事前拦截\n提示作为 block reason"]
+    P{"policy = confirm"} -- 是 --> F2["tool_call 事前拦截\n提示作为 block reason"]
     F2 --> I
 ```
 
@@ -63,7 +64,7 @@ flowchart LR
 - `tool_result`（`toolName === "bash"`）：从 `event.input.command` 取命令串，走命令提取管道
 - `tool_result`（`toolName` 为 `read`/`edit`/`write`）：从 `event.details.filePath` / `event.input.path` 提取路径，走路径管道
 - `user_bash`：用户手动跑的 bash 命令，走命令提取管道。handler 必须永不抛出（`user_bash` handler 失败会**阻断用户命令**执行），全部逻辑包在 try/catch 里兜底
-- `tool_call`（仅 confirm）：pi 在每个工具调用执行前发出，handler 返回 `{ block: true, reason }` 即拦截，pi 把 reason 包装成 error tool result 交给模型——命令未执行，模型读 reason 后可调整并重发。这是唯一先于执行的事件，也是 confirm 的立足点（ADR 0016）；匹配失败同样必须吞掉（pi 对抛错的 tool_call handler 按拦截处理）
+- `tool_call`（仅 policy = confirm）：pi 在每个工具调用执行前发出，handler 返回 `{ block: true, reason }` 即拦截，pi 把 reason 包装成 error tool result 交给模型——命令未执行，模型读 reason 后可调整并重发。这是唯一先于执行的事件，也是 confirm 的立足点（ADR 0016）；匹配失败同样必须吞掉（pi 对抛错的 tool_call handler 按拦截处理）
 
 `user_bash` 的注入出口与 `tool_result` 不同：`UserBashEventResult` 只有 `{operations}` / `{result}` 两个接管执行的分支，没有附加内容的通道，返回 `undefined` 就是纯观察。且事件在命令**执行前**触发，立即 `sendMessage` 会打断进行中的 agent turn。因此 user_bash 命中的 cue **记为 pending，在下一次模型请求前用 `pi.sendMessage()` 发出**（去重 Set 在命中时即记，语义与 tool_result 管道一致）。`excludeFromContext` 为 true（`!!` 前缀）的命令**不触发**——命令本身不进上下文，注入的 cue 会成为无源之水。
 
@@ -215,12 +216,13 @@ target = ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"]
 
 - `tools`：本条 trigger 监听哪些工具事件。决定 `when` 里能出现哪些键（`bash` → `command`；`read`/`edit`/`write` → `path`）
 - `when`：谓词子表，键名自带语义判别。首版两个键：`command`（匹配提取出的命令候选——basename 及子命令前缀，无通配符时为精确匹配）、`path`（匹配操作路径，走 picomatch glob）。未来可扩多键 AND 复合条件（如 `when.args`），不用改 schema
-- `action`：`skill`、`file`、`walkup`、`inline` 或 `exec`
+- `action`：`skill`、`file`、`walkup`、`inline` 或 `exec`——只回答 target 物化成什么形态的文本
+- `policy`：处置方式，与 action 正交（ADR 0018）。`once`（默认）每会话首次匹配注入；`repeat` 每次匹配都注入（`exec` 每次重跑命令；walkup 不支持）；`confirm` 事前拦截首次匹配调用，target 文本作为拦截理由（只配 `action = "inline"`，单 target）。原 `action = "confirm"` 已移除，解析时报错并指向新写法
 - `target`：`skill` 动作时是 skill 名（不带 `skill:` 前缀），经 `pi.getCommands()` 解析为 SKILL.md 路径（目录查找与冲突消歧全是 pi 原生行为）；`file` 动作时是提示词文件路径；`walkup` 动作时是上下文文件名列表（string 或 string[]）；`inline` 动作时是待注入的文本本身（去重键即内容，无需读文件）；`exec` 动作时是字面命令行（无占位符插值），经 pi 的 bash shell 在会话 cwd 运行，输出截断后注入（去重键即命令文本）；它在 `tool_result` handler 内等待命令跑完，因此会给当次工具调用加上这段耗时，target 应该是 `--help` 这类快命令。`target` 允许 string | array 不是 walkup 特例——`skill` 动作一条触发加载多个 SKILL 本来就是自然泛化
 
 **`file` target 的路径基准相对配置文件所在目录解析**。符合直觉——正常人把配置放项目根，target 写相对路径即指向项目内文件；也为远期多文件配置合并预留了稳定语义（每份配置引用自己身边的文件，合并时天然无歧义）。
 
-校验：按 `version` 字段校验；`tools` 与 `when` 键不匹配（如 `tools = ["bash"]` 却写了 `when.path`）、`action`/`target` 缺失等**无效条目记 diagnostics 后跳过，其余条目正常生效**（对齐 pi 对 skill 的宽容态度，单条笔误不致全配置失效）。diagnostics 有两个出口：`session_start` 时用 `ctx.ui.notify` 报告配置错误（交互模式即时可见），以及 `/cues [status]` 斜杠命令按需查看（配置 diagnostics、运行时缺失记录、本会话已触发的去重清单；裸 `/cues` 即 `/cues status`，为后续子命令预留空间）。运行时 target 缺失（skill 名在 `getCommands()` 里找不到、file 路径不存在）**静默跳过并记 diagnostic，且同样记入去重 Set**——避免每条命令重复诊断，也不把配置问题泄漏进模型上下文。`walkup` 动作允许省略 `when`——缺省即匹配所有事件，正是「任意路径操作都触发 walk-up」的常见用法；配 `when.path` glob 则得到作用域表达力（如只在改 `src/**` 时 walk-up、用 `!**/*.test.ts` 排除测试文件）。**仅 walkup 可省略 when**：`skill`/`file`/`inline`/`exec` 省略 when 记 diagnostic 并跳过该条目——如 `tools = ["bash"]` 忘写 `when.command` 会导致每条 bash 命令都触发注入，几乎一定是笔误。`exec` 额外要求只听 `bash`：path 事件对一个要跑 shell 命令的动作没有意义。
+校验：按 `version` 字段校验；`tools` 与 `when` 键不匹配（如 `tools = ["bash"]` 却写了 `when.path`）、`action`/`target` 缺失等**无效条目记 diagnostics 后跳过，其余条目正常生效**（对齐 pi 对 skill 的宽容态度，单条笔误不致全配置失效）。diagnostics 有两个出口：`session_start` 时用 `ctx.ui.notify` 报告配置错误（交互模式即时可见），以及 `/cues [status]` 斜杠命令按需查看（配置 diagnostics、运行时缺失记录、本会话已触发的去重清单；裸 `/cues` 即 `/cues status`，为后续子命令预留空间）。运行时 target 缺失（skill 名在 `getCommands()` 里找不到、file 路径不存在）**静默跳过并记 diagnostic，且同样记入去重 Set**——避免每条命令重复诊断，也不把配置问题泄漏进模型上下文。`walkup` 动作允许省略 `when`——缺省即匹配所有事件，正是「任意路径操作都触发 walk-up」的常见用法；配 `when.path` glob 则得到作用域表达力（如只在改 `src/**` 时 walk-up、用 `!**/*.test.ts` 排除测试文件）。**仅 walkup 可省略 when**：`skill`/`file`/`inline`/`exec` 省略 when 记 diagnostic 并跳过该条目——如 `tools = ["bash"]` 忘写 `when.command` 会导致每条 bash 命令都触发注入，几乎一定是笔误。`exec` 额外要求只听 `bash`：path 事件对一个要跑 shell 命令的动作没有意义。policy 组合约束：`confirm` 只配 `inline`（第一版拦截理由就是触发器自身的字面文本），walkup 只支持 `once`（按文件 realPath 跨触发器去重是它的固有语义）。「事前每次都拦」在配置语法层面写不出来——枚举没有这个值，它的可实现语义不存在（重试会被同一 reason 再拦，软锁）。
 
 ## 命令提取（bash 管道）
 
@@ -282,13 +284,13 @@ sessionWalkupCache: Map<targetDir, {
 - 与去重 Set 分工：**Set 管「已注入的目标不再注入」，此缓存管「发现过程不再重做」**，两层互补不重叠
 
 
-## 事前拦截（confirm action，ADR 0016）
+## 事前拦截（policy = confirm，ADR 0016 / 0018）
 
-其余 action 都在 `tool_result` 事后注入；confirm 是唯一的例外，在 `tool_call` 事前拦截。动机：有些提示必须在执行**之前**到达，否则被提醒的那次执行本身就错了（`docker build` 忘记走代理、全量构建耗时警告）。首次匹配返回 `{ block: true, reason }`，reason 是 `action="confirm"` 的信封，内容为提示模板渲染文本；默认英文模板承担三重语义——未执行、非权限拒绝、必要时调整后重发——全局 `[confirm] template` 可覆写（必须含 `{target}` 占位符，项目级覆写被拒绝）。四类工具皆可配：bash 用 `when.command`、path 工具用 `when.path`，匹配逻辑与其余 action 完全一致；单 target（一次拦截只有一个理由）。去重沿用内容寻址，键 `confirm:{target}`。
+其余 policy 都在 `tool_result` 事后注入；confirm 是唯一的例外，在 `tool_call` 事前拦截。动机：有些提示必须在执行**之前**到达，否则被提醒的那次执行本身就错了（`docker build` 忘记走代理、全量构建耗时警告）。首次匹配返回 `{ block: true, reason }`，reason 是 `action="confirm"` 的信封，内容为提示模板渲染文本；默认英文模板承担三重语义——未执行、非权限拒绝、必要时调整后重发——全局 `[confirm] template` 可覆写（必须含 `{target}` 占位符，项目级覆写被拒绝）。四类工具皆可配：bash 用 `when.command`、path 工具用 `when.path`，匹配逻辑与其余 policy 完全一致；只配 `action = "inline"`、单 target（一次拦截只有一个理由）。去重沿用内容寻址，键 `confirm:{target}`。
 
 ## 去重与状态
 
-- 会话级 `Set<string>`，key 为 `action + 内容标识`，**全部按内容寻址、与配置形式无关**：`file` 用相对配置目录解析出的绝对路径；`skill` 用 skill 名；`walkup` 用收集到的每个上下文文件的 realPath；`confirm` 用 target 文本，在 `tool_call` 内 claim——重发调用因键已占而直接放行，这正是「重试即执行」的实现。多 trigger 指向同一目标只加载一次（参考 pi-rules 的 `injectedSingleFileRules` 模式）——默认 walkup `[AGENTS.md]` 与用户自定义 `walkup ["AGENTS.md","CONTEXT.md"]` 共存时，AGENTS.md 也只注入一次。walkup 按文件去重的推论：什么都没找到就什么都不记，后续事件自然重试；会话后期首次进入的目录，其中的上下文文件仍会加载（对齐 pi-rules dynamic 语义）
+- 会话级 `Set<string>`，key 为 `action + 内容标识`，**全部按内容寻址、与配置形式无关**：`file` 用相对配置目录解析出的绝对路径；`skill` 用 skill 名；`walkup` 用收集到的每个上下文文件的 realPath；`confirm` 用 target 文本，在 `tool_call` 内 claim——重发调用因键已占而直接放行，这正是「重试即执行」的实现。多 trigger 指向同一目标只加载一次（参考 pi-rules 的 `injectedSingleFileRules` 模式）——默认 walkup `[AGENTS.md]` 与用户自定义 `walkup ["AGENTS.md","CONTEXT.md"]` 共存时，AGENTS.md 也只注入一次。walkup 按文件去重的推论：什么都没找到就什么都不记，后续事件自然重试；会话后期首次进入的目录，其中的上下文文件仍会加载（对齐 pi-rules dynamic 语义）。`policy = repeat` 的触发器首次命中照常 claim 键并持久化 session entry（ADR 0017），后续命中绕过去重检查、不写 entry——共享同一 target 的 once 触发器 resume 后不会多注入，`/cues status` 按键聚合显示 `×N`
 - `session_start`、`session_compact`、`/reload` 时清空（compact 后旧上下文已压缩，重新触发是对的）
 - 若 pi 原生 skill 加载自带幂等（如已加载 skill 不重复进上下文），去重仍保留——避免依赖内部实现细节
 

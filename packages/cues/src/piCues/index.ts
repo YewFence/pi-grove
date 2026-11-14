@@ -257,7 +257,7 @@ export default function piCues(pi: ExtensionAPI): void {
     input: Record<string, unknown>;
   }): { result: { block: true; reason: string }; triggerLabel: string } | undefined {
     for (const trigger of config.triggers) {
-      if (trigger.action !== "confirm" || !trigger.tools.includes(event.toolName as ToolName)) {
+      if (trigger.policy !== "confirm" || !trigger.tools.includes(event.toolName as ToolName)) {
         continue;
       }
       const triggerLabel = confirmTriggerLabel(event, trigger);
@@ -340,7 +340,11 @@ export default function piCues(pi: ExtensionAPI): void {
     const texts: string[] = [];
     for (const trigger of config.triggers) {
       const patterns = trigger.when?.command;
-      if (!trigger.tools.includes("bash") || patterns === undefined) {
+      if (
+        !trigger.tools.includes("bash") ||
+        patterns === undefined ||
+        trigger.policy === "confirm"
+      ) {
         continue;
       }
       const matchedCommand = commandNames.find((name) => matchAnyValue(patterns, [name]));
@@ -376,12 +380,12 @@ export default function piCues(pi: ExtensionAPI): void {
     triggerLabel: string,
     delivery: "inline" | "nextTurn",
   ): Promise<string | null> {
-    const record = claimOnce(session, dedupKey("exec", target), {
-      action: "exec",
-      target,
-      source: trigger.source,
-      loaded: false,
-    });
+    const record = claimOnce(
+      session,
+      dedupKey("exec", target),
+      { action: "exec", target, source: trigger.source, loaded: false },
+      trigger.policy === "repeat",
+    );
     if (record === undefined) {
       return null;
     }
@@ -468,7 +472,7 @@ export default function piCues(pi: ExtensionAPI): void {
     const walkupFiles: Array<{ file: WalkupFile; source: string }> = [];
     const walkupSeen = new Set<string>();
     for (const trigger of config.triggers) {
-      if (trigger.tools.includes("bash")) {
+      if (trigger.tools.includes("bash") || trigger.policy === "confirm") {
         continue;
       }
       const matchedPath = paths.find((path) => {
@@ -529,12 +533,12 @@ export default function piCues(pi: ExtensionAPI): void {
   ): string | null {
     if (trigger.action === "inline") {
       // The target IS the content; the dedup key is the text itself.
-      const record = claimOnce(session, dedupKey("inline", target), {
-        action: "inline",
-        target,
-        source: trigger.source,
-        loaded: true,
-      });
+      const record = claimOnce(
+        session,
+        dedupKey("inline", target),
+        { action: "inline", target, source: trigger.source, loaded: true },
+        trigger.policy === "repeat",
+      );
       if (record === undefined) {
         return null;
       }
@@ -547,12 +551,12 @@ export default function piCues(pi: ExtensionAPI): void {
     }
 
     if (trigger.action === "skill") {
-      const record = claimOnce(session, dedupKey("skill", target), {
-        action: "skill",
-        target,
-        source: trigger.source,
-        loaded: false,
-      });
+      const record = claimOnce(
+        session,
+        dedupKey("skill", target),
+        { action: "skill", target, source: trigger.source, loaded: false },
+        trigger.policy === "repeat",
+      );
       if (record === undefined) {
         return null;
       }
@@ -571,12 +575,12 @@ export default function piCues(pi: ExtensionAPI): void {
 
     if (trigger.action === "file") {
       const path = isAbsolute(target) ? target : resolve(trigger.configDir, target);
-      const record = claimOnce(session, dedupKey("file", path), {
-        action: "file",
-        target: path,
-        source: trigger.source,
-        loaded: false,
-      });
+      const record = claimOnce(
+        session,
+        dedupKey("file", path),
+        { action: "file", target: path, source: trigger.source, loaded: false },
+        trigger.policy === "repeat",
+      );
       if (record === undefined) {
         return null;
       }
@@ -654,18 +658,21 @@ export default function piCues(pi: ExtensionAPI): void {
   }
 
   /**
-   * Record one settled firing: persist it as a custom entry so a resumed
-   * session restores its dedup, then append the telemetry event. Called once
-   * per claim, always after `loaded` has its final value.
+   * Record one settled firing: persist it as a custom entry (first firings
+   * only — repeat re-firings claim no key and stay out of the resume
+   * rebuild), then append the telemetry event. Called once per claim, always
+   * after `loaded` has its final value.
    */
   function recordFiring(record: TriggeredRecord): void {
-    pi.appendEntry(TRIGGERED_ENTRY_TYPE, {
-      key: record.key,
-      action: record.action,
-      target: record.target,
-      source: record.source,
-      loaded: record.loaded,
-    });
+    if (record.first) {
+      pi.appendEntry(TRIGGERED_ENTRY_TYPE, {
+        key: record.key,
+        action: record.action,
+        target: record.target,
+        source: record.source,
+        loaded: record.loaded,
+      });
+    }
     logTelemetry(record);
   }
 
@@ -681,7 +688,12 @@ export default function piCues(pi: ExtensionAPI): void {
     const injected = records.filter((record) => record.loaded);
     const failed = records.filter((record) => !record.loaded);
     if (injected.length > 0) {
-      ctx.ui.notify(`pi-cues: injected ${cueSummary(injected, ctx.cwd)}`, "info");
+      ctx.ui.notify(
+        `pi-cues: injected ${cueSummary(injected, ctx.cwd)}${
+          injected.some((record) => !record.first) ? " (repeat)" : ""
+        }`,
+        "info",
+      );
     }
     if (failed.length > 0) {
       ctx.ui.notify(`pi-cues: failed to load ${cueSummary(failed, ctx.cwd)}`, "warning");
@@ -743,11 +755,25 @@ export default function piCues(pi: ExtensionAPI): void {
     }
     if (session.triggered.length > 0) {
       lines.push(`triggered this session (${session.triggered.length}):`);
-      for (const record of session.triggered) {
-        lines.push(`  ${record.loaded ? "✓" : "✗"} ${record.action}: ${record.target}`);
+      for (const [label, count] of triggeredSummary()) {
+        lines.push(`  ${label}${count > 1 ? ` ×${count}` : ""}`);
       }
     }
     return lines.join("\n");
+  }
+
+  /** /cues status rows: one per firing key, repeat re-firings counted per key. */
+  function triggeredSummary(): Array<[string, number]> {
+    const rows = new Map<string, { label: string; count: number }>();
+    for (const record of session.triggered) {
+      const label = `${record.loaded ? "✓" : "✗"} ${record.action}: ${record.target}`;
+      const row = rows.get(record.key) ?? { label, count: 0 };
+      row.count += 1;
+      // A repeat re-firing may load where the first failed (or vice versa); show the latest.
+      row.label = label;
+      rows.set(record.key, row);
+    }
+    return [...rows.values()].map((row) => [row.label, row.count] as [string, number]);
   }
 }
 

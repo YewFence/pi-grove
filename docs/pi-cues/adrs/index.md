@@ -21,3 +21,4 @@ pi-cues 的关键设计决策及取舍。每个 ADR 记录上下文、决策、�
 | [0015](0015-command-output-block.md) | exec 输出用 `<command-output>` 块（取代 0013 决策 4） |
 | [0016](0016-confirm-action.md) | confirm 动作：事前拦截代替事后注入 |
 | [0017](0017-dedup-persistence.md) | 去重状态经会话条目持久化，resume 后重建 |
+| [0018](0018-policy-axis.md) | policy 维度 once/repeat/confirm 取代 action 里的 confirm |

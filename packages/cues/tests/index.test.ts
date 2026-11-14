@@ -430,6 +430,82 @@ describe("inline cue", () => {
   });
 });
 
+describe("repeat policy", () => {
+  it("injects on every match, persists one session entry, and tags repeat toasts", async () => {
+    // #given a repeat inline trigger #when jj runs three times #then three injections, one persisted entry
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "inline"\ntarget = "Commit messages in Chinese."\npolicy = "repeat"\n`,
+    );
+    const handler = fake.handlers.get("tool_result");
+    expect(injectedText(await handler?.(bashResult("jj st"), ctx))).toContain(
+      "Commit messages in Chinese.",
+    );
+    expect(injectedText(await handler?.(bashResult("jj log"), ctx))).toContain(
+      "Commit messages in Chinese.",
+    );
+    expect(injectedText(await handler?.(bashResult("jj st"), ctx))).toContain(
+      "Commit messages in Chinese.",
+    );
+    // #then only the first firing claimed the dedup key and persisted
+    expect(fake.entries).toHaveLength(1);
+    expect(fake.notices[0]).toBe('pi-cues: injected inline "Commit messages in Chinese."');
+    expect(fake.notices.filter((n) => n.includes("(repeat)"))).toHaveLength(2);
+    // #then /cues status lists the firing once, with a repeat count
+    void fake.commands.get("cues")?.handler("status", ctx);
+    expect(fake.notices.at(-1)).toContain("Commit messages in Chinese. ×3");
+  });
+
+  it("re-runs an exec target on every match", async () => {
+    const outputs = ["first help", "second help"];
+    const calls: string[] = [];
+    setExecOperations({
+      exec: (command, _cwd, { onData }) => {
+        calls.push(command);
+        onData(Buffer.from(outputs[calls.length - 1] ?? "help"));
+        return Promise.resolve({ exitCode: 0 });
+      },
+    });
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "exec"\ntarget = "jj --help"\npolicy = "repeat"\n`,
+    );
+
+    const handler = fake.handlers.get("tool_result");
+    expect(injectedText(await handler?.(bashResult("jj st"), ctx))).toContain("first help");
+    expect(injectedText(await handler?.(bashResult("jj log"), ctx))).toContain("second help");
+    expect(calls).toHaveLength(2);
+    expect(fake.entries).toHaveLength(1);
+  });
+
+  it("keeps repeat firings out of the resume rebuild, so resume does not re-inject", async () => {
+    // #given a repeat trigger that fired twice before resume #when the session resumes and jj runs
+    // #then the cue re-fires on the new match (repeat policy), but the once-policy entries restored
+    // from the session keep their dedup
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "jj"\naction = "inline"\ntarget = "note"\npolicy = "repeat"\n`,
+    );
+    await fake.handlers.get("tool_result")?.(bashResult("jj st"), ctx);
+
+    const resumed = createFakePi();
+    piCues(resumed.pi);
+    const resumedCtx = {
+      cwd: ctx.cwd,
+      hasUI: true,
+      sessionManager: {
+        getSessionId: () => "session-test-id",
+        buildContextEntries: () => [...fake.entries],
+      },
+      ui: { notify: resumed.notify },
+    };
+    resumed.handlers.get("session_start")?.({ type: "session_start" }, resumedCtx);
+
+    expect(
+      injectedText(await resumed.handlers.get("tool_result")?.(bashResult("jj st"), resumedCtx)),
+    ).toContain("note");
+    // Only the first firing's entry was restored; no new entry for the re-firing.
+    expect(resumed.entries).toHaveLength(0);
+  });
+});
+
 function bashCall(command: string): any {
   return {
     type: "tool_call",
@@ -456,7 +532,7 @@ describe("confirm cue", () => {
   it("blocks the first matching bash call with the prompt as the reason", async () => {
     // #given a confirm trigger on docker build #when the first call arrives #then blocked with envelope reason
     const { fake, ctx } = setup(
-      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Build-time network needs the host proxy at 127.0.0.1:7897."\n`,
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "inline"\npolicy = "confirm"\ntarget = "Build-time network needs the host proxy at 127.0.0.1:7897."\n`,
     );
     const handler = fake.handlers.get("tool_call");
     const blocked = await handler?.(bashCall("docker build -t app ."), ctx);
@@ -472,7 +548,7 @@ describe("confirm cue", () => {
 
   it("lets the retried call through (dedup per session)", async () => {
     const { fake, ctx } = setup(
-      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "inline"\npolicy = "confirm"\ntarget = "Use the proxy."\n`,
     );
     const handler = fake.handlers.get("tool_call");
     expect(await handler?.(bashCall("docker build ."), ctx)).toBeDefined();
@@ -493,7 +569,7 @@ describe("confirm cue", () => {
 
   it("blocks the first matching path operation", async () => {
     const { fake, project, ctx } = setup(
-      `version = 1\n[[triggers]]\ntools = ["edit"]\nwhen.path = "src/generated/**"\naction = "confirm"\ntarget = "This file is generated; hand edits are overwritten."\n`,
+      `version = 1\n[[triggers]]\ntools = ["edit"]\nwhen.path = "src/generated/**"\naction = "inline"\npolicy = "confirm"\ntarget = "This file is generated; hand edits are overwritten."\n`,
     );
     writeFile(join(project, "src", "generated", "api.ts"), "code");
     const handler = fake.handlers.get("tool_call");
@@ -514,7 +590,7 @@ describe("confirm cue", () => {
     );
     writeFile(
       join(project, ".pi", "extensions", "pi-cues", "config.toml"),
-      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "用代理。"\n`,
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "inline"\npolicy = "confirm"\ntarget = "用代理。"\n`,
     );
     process.env.HOME = home;
     process.env["PI_CODING_AGENT_DIR"] = join(home, ".pi", "agent");
@@ -539,7 +615,7 @@ describe("confirm cue", () => {
 
   it("does not re-block after the model re-issues, and the error result passes the tool_result gate", async () => {
     const { fake, ctx } = setup(
-      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "inline"\npolicy = "confirm"\ntarget = "Use the proxy."\n`,
     );
     const callHandler = fake.handlers.get("tool_call");
     expect(await callHandler?.(bashCall("docker build ."), ctx)).toBeDefined();
@@ -560,7 +636,7 @@ describe("confirm cue", () => {
 
   it("records a telemetry event when blocking", async () => {
     const { fake, ctx } = setup(
-      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "inline"\npolicy = "confirm"\ntarget = "Use the proxy."\n`,
     );
     await fake.handlers.get("tool_call")?.(bashCall("docker build ."), ctx);
     const status = fake.commands.get("cues");
@@ -570,7 +646,7 @@ describe("confirm cue", () => {
 
   it("ignores calls whose tool is not in the trigger's tools", async () => {
     const { fake, ctx } = setup(
-      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "confirm"\ntarget = "Use the proxy."\n`,
+      `version = 1\n[[triggers]]\ntools = ["bash"]\nwhen.command = "docker build"\naction = "inline"\npolicy = "confirm"\ntarget = "Use the proxy."\n`,
     );
     expect(
       await fake.handlers.get("tool_call")?.(
@@ -578,6 +654,37 @@ describe("confirm cue", () => {
         ctx,
       ),
     ).toBeUndefined();
+  });
+
+  it("does not inject after the fact once the retry succeeded", async () => {
+    // #given a confirm-policy trigger #when the blocked call is re-issued and succeeds
+    // #then the tool_result pipeline skips it: its only delivery is the block reason
+    const { fake, ctx } = setup(
+      `version = 1\n[[triggers]]\ntools = ["read"]\nwhen.path = "src/generated/**"\naction = "inline"\npolicy = "confirm"\ntarget = "Generated file."\n`,
+    );
+    const callHandler = fake.handlers.get("tool_call");
+    await callHandler?.(
+      {
+        type: "tool_call",
+        toolCallId: "c1",
+        toolName: "read",
+        input: { path: join("/w", "src", "generated", "api.ts") },
+      },
+      ctx,
+    );
+    const result = await fake.handlers.get("tool_result")?.(
+      {
+        type: "tool_result",
+        toolCallId: "c1",
+        toolName: "read",
+        input: { path: join("/w", "src", "generated", "api.ts") },
+        content: [{ type: "text", text: "code" }],
+        details: { filePath: join("/w", "src", "generated", "api.ts") },
+        isError: false,
+      },
+      ctx,
+    );
+    expect(result).toBeUndefined();
   });
 });
 
