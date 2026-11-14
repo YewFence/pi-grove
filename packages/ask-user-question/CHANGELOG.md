@@ -1,3 +1,8 @@
+## What's Changed in ask-user-question-v0.1.0
+
+- reset fork changelog and record upstream attribution
+- harden TypeScript and repository checks
+
 # Changelog
 
 All notable changes to `@pi-grove/ask-user-question` are documented here. The package forked from [`@juicesharp/rpiv-ask-user-question` at `v2.12.0`](https://github.com/juicesharp/rpiv-mono/tree/v2.12.0/packages/rpiv-ask-user-question); upstream history before the fork is not repeated here — see the [upstream changelog](https://github.com/juicesharp/rpiv-mono/blob/v2.12.0/packages/rpiv-ask-user-question/CHANGELOG.md).
