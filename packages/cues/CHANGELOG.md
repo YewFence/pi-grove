@@ -1,3 +1,10 @@
+## What's Changed in cues-v0.3.0
+
+- split dispatch policy from action with once/repeat/confirm
+- persist dedup state across session resume
+- add confirm action blocking the first matching call pre-execution
+- harden TypeScript and repository checks
+
 ## What's Changed in 0.1.0
 
 - tolerate an unchanged release version by @YewFence
